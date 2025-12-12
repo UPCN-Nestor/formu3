@@ -1,0 +1,226 @@
+Tenemos un sistema de RRHH arcaico, que para la liquidación de sueldos tiene fórmulas con "variables" (en realidad funciones) horribles, que referencian conceptos calculados anteriormente (se hace una sola pasada).
+
+Ej. del diccionario de variables: 
+* Patrón: CALCnnnn - Descripción: IMPORTE CALCULADO EN EL CONCEPTO INDICADO EN nnnn - Texto para mostrar: "Valor de nnnn"
+
+Quiero desarrollar una GUI web que muestre cada concepto en un rectángulo de color (basado en el hash del número de concepto, para que cada concepto siempre tenga el mismo color), con su respectiva fórmula. Los conceptos definitivos van a tener borde doble. Una fórmula puede tener varias variables, ej:
+(%CALC3498% / 180,00) * %ST00340035%
+En este caso, cada variable va resaltada de un color distinto (basado en el número de concepto que referencia, o en la variable en los casos en que involucre más de un concepto como "SC"). De ahí sale una flecha hacia arriba hacia un nuevo rectángulo pintado del color correcto, con la información del concepto corerespondiente. 
+Entonces cada concepto tendría un árbol de conceptos de los cuales, y también un árbol "inverso", hacia abajo, de conceptos que dependen de él. Para esto último va a haber que armar algún tipo de caché, porque va a ser una búsqueda pesada.
+Cada variable mostraría su "texto para mostrar", de manera tal que "%CALC7680%" se convertiría en "Valor de 7680"; si no está disponible, se muestra la el nombre de la variable, ej. "CALC de nnnn".
+
+Algunas variables involucran más de un concepto, por ej. "SC", sumatoria de conceptos. En este caso, el color de la variable va a ser según el hash de la variable completa (ej. "SC01003600") y va a apuntar a un rectángulo especial de ese mismo color, que va a tener una lista de los conceptos referenciados, cada uno con un "+" al lado, que va a permitir ampliar y ver ese concepto de la misma forma que hablamos anteriormente.
+
+Otras variables referencian cuestiones que exceden esta implementación y van a ser "terminales".
+
+Cada vez que se hace click en un rectángulo, se cargan sus dependencias y dependientes (si no están ya). Hasta cierta cantidad de rectángulos, configurable, supongo.
+En este "plano" se tiene que permitir hacer zoom hacia adentro y hacia afuera, y a scrollear.
+
+Se tienen que poder guardar pantallas, con un nombre sugerido (según el concepto raíz supongo), y volver a abrirlas a partir de un desplegable.
+
+También necesito la opción de cargar Año, Mes (default actuales), Tipo Liquidación, Legajo (default todos) y a partir de eso buscar en una tabla de liquidación los importes reales que se liquidaron, y adorsarlo a cada rectángulo de forma destacada.
+
+El sistema tiene que responder rápidamente, tanto en el aspecto gráfico como en cuanto a la carga de datos. Sugerir las tecnologías apropiadas para este requerimiento.
+
+La base de datos es SQL Server.
+    url: jdbc:sqlserver://192.168.0.227:1433;database=UPCN_RRHH_PRUE
+    username: consultas
+    password: Csua2018
+	
+Contamos con estos recursos:
+
+CREATE VIEW [dbo].[ConceptoTipoLiqFormula] AS
+SELECT DISTINCT C.ConCod CodConcepto, C.ConDsc DescripcionConcepto, 
+	C.ConTra TransitorioDefinitivo, 
+	TL.TpoLiqDsc TipoLiquidacion, 
+	C.ConOrd Orden, 
+	CASE 
+		WHEN C.ConTpoCnc = 1 THEN '1: Sujeto a Retención'
+		WHEN C.ConTpoCnc = 2 THEN '2: No Sujeto a Retención'
+		WHEN C.ConTpoCnc = 3 THEN '3: Salario Familiar'
+		WHEN C.ConTpoCnc = 4 THEN '4: Retenciones'
+		WHEN C.ConTpoCnc = 5 THEN '5: Deducciones Varias'
+		WHEN C.ConTpoCnc = 6 THEN '6: Aportes'
+		WHEN C.ConTpoCnc = 7 THEN '7: Provisión'
+		ELSE 'Unknown' -- or any other default value you prefer
+	END AS TipoConcepto,
+	F.ForCod CodFormula, F.ForDsc DescripcionFormula,
+	ForFor1 + ForFor2 + ForFor3 FormulaCompleta,
+	ForPara11 + ForCompa1 + ' ' + ForPara12 + ForUnion1 + ' ' + ForPara21 + ForCompa2 + ' ' + ForPara22 CondicionFormula
+FROM [UPCN_RRHH_PRUE].dbo.[FORMUL] F
+	JOIN [UPCN_RRHH_PRUE].dbo.[CONCE21] C
+		ON (F.SucCod = C.SucCod and C.ForCod = F.ForCod)
+	JOIN [UPCN_RRHH_PRUE].dbo.[TIPLIQ] TL
+		ON (C.ConTpoLiq = TL.TpoLiqCod)
+WHERE F.ForVig = '01/01/1753' and C.ConVig = '01/01/1753' 
+	AND C.SucCod = 1
+
+
+Este es el diccionario de variables. En términos generales las que tienen nnnn son las que nos interesan (referencian concepto nnnn), y las que además tienen mmmm o xxxx suelen definir un rango, que también nos interesan. El resto sólo como referencia.
+
+* Patrón: 0nnnnaammq - Descripción: ESTA VARIABLE DEVUELVE EL IMPORTE DEL CONCEPTO LIQUIDADO EN UNA LIQUIDACION DE SUELDO DE ACUERDO AL SGTE.DETALLE: nnnn = CODIGO DE CONCEPTO aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q = Q. DE LA LIQUIDACION (MENSUAL DEBE SER 2)
+* Patrón: ACnnnnmmql - Descripción: Acumulador importe calculado nnnn  Concepto mm Meses anteriore a acumular q Quincena l Tipo Liquidacion   
+* Patrón: ADICnnnn   - Descripción: ADICIONAL CORRESPONDIENTE AL CODIGO DE COMPOSICION SALARIAL INDICADO EN nnnn. SI EN nnnn SE INDICA 0000, SE TOMARA EL CODIGO DE COMPOSICION SALARIAL DE CADA EMPLEADO.   
+* Patrón: AFILIADO   - Descripción: DEVUELVE  0 SI EL EMPLEADO ESTA AFILIADO AL SINDICATO Y 1 SI NO LO ESTÁ.      
+* Patrón: AInnnnmmql - Descripción: Acumulador informado nnnn  Concepto mm  Meses anteriores a acumular q  Quincena l  Tipo Liquidacion   
+* Patrón: ANIOSCAT   - Descripción: ESTA VARIABLE DEVUELVE LA CANTIDAD DE AÑOS DE ANTIGUEDAD DEL EMPLEADO EN SU CATEGORIA.     
+* Patrón: Annnnaammq - Descripción: ESTA VARIABLE DEVUELVE EL IMPORTE DEL CONCEPTO LIQUIDADO EN UNA LIQUIDACION DE AGUINALDO DE ACUERDO AL SGTE.DETALLE: nnnn = CODIGO DE CONCEPTO aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q = Q. DE LA LIQUIDACION (MENSUAL DEBE SER 2)
+* Patrón: ANOLIQ     - Descripción: AÑO DE LA LIQUIDACION QUE SE ESTA PROCE/ SANDO      
+* Patrón: ANOTRAxxx  - Descripción: DEVUELVE LOS AÑOS TRABAJADOS DESDE LA FECHA DE INGRESO HASTA LA LIQUIDACION, REDONDEANDO EN UN AÑO MAS SI LOS DIAS TRABAJADOS SUPERAN A  xxx.    
+* Patrón: ANTIBAE    - Descripción: ESTA VARIABLE DEVUELVE LA ANTIGUEDAD DEL EMPLEADO AL MES DE ANTIGUEDAD DEL EMPLEA DO     
+* Patrón: ANTICIPO   - Descripción: DEVUELVE LA CUOTA DEL ANTICIPO A DESCONTAR.      
+* Patrón: ANTIGUEDAD - Descripción: DEVUELVE LA ANTIGUEDAD DEL EMPLEADO DE ACUERDO A LA FECHA DE RECONOCIMIENTO DE ANTIGUEDAD Y LA FECHA DE LIQUIDACION.     
+* Patrón: ANTIGUEMES - Descripción: DEVUELVE LA ANTIGUEDAD EN AÑOS PERO SOLO CUANDO EL MES DE RECONOCI- MIENTO DE ANTIGUEDAD COINCIDE CON EL DE LIQUIDACION    
+* Patrón: ART        - Descripción: DEVUELVE EL CODIGO DE A.R.T. DEL EMPLE ADO.      
+* Patrón: ATENCaacc  - Descripción: CANTIDAD DE LLAMADOS DE ATENCION EN aa AÑOS ANTERIORES SUPERIORES A cc      
+* Patrón: BASICOANTI - Descripción: BASICO POR ANTIGUEDAD       
+* Patrón: BASInnnn   - Descripción: DEVUELVE EL BASICO DE LA COMPOSICION SA- LARIAL QUE SE INDICA EN nnnn. SI ES 0000 TOMA LA COMPOSICION SALARIAL DEL LEGAJO QUE SE ESTA LIQUIDANDO.    
+* Patrón: Bnnnnaammq - Descripción: ESTA VARIABLE DEVUELVE EL IMPORTE DEL CONCEPTO LIQUIDADO EN UNA LIQUIDACION DE B.A.E. DE ACUERDO AL SGTE. DETALLE: nnnn = CODIGO DE CONCEPTO aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q = QUINCENA DE LA LIQUIDACION (SI ES MENSUAL DEBE SER 2)
+* Patrón: CALCnnnn   - Descripción: IMPORTE CALCULADO EN EL CONCEPTO INDICA\ DO EN nnnn. - Texto para mostrar: "Valor de nnnn"    
+* Patrón: CALUnnnnl  - Descripción: DEVUELVE EL IMPORTE CALCULADO POR ULT VEZ EN EL CONCEPTO nnnn DE LA LIQUIDACION  TIPO l.     
+* Patrón: CALXnnnnl  - Descripción: DEVUELVE EL IMPORTE CALCULADO EN EL CONCEPTO nnnn DE LA ULTIMA LIQUIDACION TIPO l.     
+* Patrón: CANTADHE   - Descripción: DEVUELVE LA CANTIDAD DE FAMILIARES QUE FIGURAN CON LA MARCA DE ADHERENTES.     
+* Patrón: CATEGORIA  - Descripción: DEVUELVE LA CATEGORIA DEL EMPLEADO.       
+* Patrón: CCnnnnmmql - Descripción: IMPORTE CALCULADO EN CONCEPTO nnnn EN LA LIQUIDACION CORRESPONDIENTE A mm MESES ANTERIORES A LA LIQUIDACION TIPO l. q = 1 : PRIMER QUINCENA q = 2 : SEGUNDA QUINCENA q = 0 : AMBAS QUINCENAS  
+* Patrón: CCTO0000   - Descripción: DEVUELVE EL VALOR CORRESPONDIENTE AL CENTRO DE COSTO EN EL CONCEPTO XXXX. SI SE DEJA 0000, TOMARA EL CONCEPTO QUE SE ESTA CALCULANDO.    
+* Patrón: CGANnnnn   - Descripción: Ingresa en la ACUGAN con mes y año de co texto para llevarse el tipo de liquidaci del ultimo orden del mes. luego ingresa en la liquid1 en el tipo de liquidacion que trajo de la acugan a buscar el valor calculado en el concepto nnnn  
+* Patrón: CInnnnmmql - Descripción: VALOR INFORMADO EN CONCEPTO nnnn DE LA LIQUIDACION TIPO l CORRESPONDIENTE A mm MESES ANTERIORES. q = 1 : PRIMER QUINCENA q = 2 : SEGUNDA QUINCENA q = 0 : AMBAS QUINCENAS  
+* Patrón: COMSnnnn   - Descripción: IMPORTE CORRESPONDIENTE A LA COMPOSICION SALARIAL DEL CODIGO INDICADO EN nnnn. SI EN nnnn, SE INDICA 0000 SE TOMARA EL CO\ DIGO DE COMPOSICION SALARIAL DE CADA EM\ PLEADO.   
+* Patrón: CONCEPTO   - Descripción: X=2 SUMA CNC NO REMUNERATIVOS       
+* Patrón: CONCEPTO2  - Descripción: XXX       
+* Patrón: CONDCONTRA - Descripción: condicion contratacion       
+* Patrón: CONVENIO   - Descripción: DEVUELVE EL CODIGO DE CONVENIO DEL EMPLEADO.      
+* Patrón: CSEMnnnnxl - Descripción: DEVUELVE LA SUMATORIA DE LOS IMPORTES CALCULADOS EN UN SEMESTRE, PARA EL CON- CEPTO INDICADO EN nnnn, SIENDO: x=1: ENE-JUN; x=2:  JUL-DIC x = 0:SEMESTRE QUE ESTÁ CALCULANDO X=9:TODO EL AÑO; X=8 EL MES QUE SE ESTÁ CALCULANDO l : TIPO LIQUIDACION. T=TODAS LAS LIQUI
+* Patrón: CSEPnnnnxl - Descripción: DEVUELVE LA SUMATORIA DE LOS IMPORTES CALCULADOS DEL CONCEPTO INDICADO EN nnnn DEL SEMESTRE ACTUAL SI FINALIZO Y DEL SE MESTRE DEL AÑO ANTERIOR SI NO FINALIZO . x=1 SEMESTRE DE ENERO A JUNIO x=2 SEMESTRE DE JULIO A DICIEMBRE l = TIPO DE LIQUIDACION 
+* Patrón: CTOCTO     - Descripción: Devuelve el centro de costo del empleado.      
+* Patrón: DIAINASEMn - Descripción: DEVUELVE LA CANTIDAD DE DIAS DE INASIS- TENCIA DEL SEMESTRE n. (n PUEDE SER 1 O 2 ).     
+* Patrón: DIASGUAR   - Descripción: DEVUELVE LOS DIAS TRABAJADOS POR UN EM- PLEADO, DENTRO DEL PERIODO CORRESPON- DIENTE AL MES DE LIQUIDACION:     
+* Patrón: DIASHABI   - Descripción: DEVUELVE LA CANTIDAD DE DIAS HABILES DEL PERIODO CORRESPONDIENTE AL MES DE LIQUIDACION.     
+* Patrón: DIASTRAB   - Descripción: DEVUELVE LOS DIAS TRABAJADOS DESDE EL INGRESO A LA LIQUIDACION      
+* Patrón: DIATRAANOn - Descripción: DIAS TRABAJADOS EN EL AÑO (CALENDARIO). SI n = 1, INCLUYE EL MES DE LIQUIDACION. SI n = 2, NO INCLUYE MES DE LIQUIDACION. SI n = 3, HASTA EL 31/12.    
+* Patrón: DIATRAMES  - Descripción: DEVUELVE LOS DIAS TRABAJADOS DEL MES QUE SE ESTA LIQUIDANDO SIEMPRE Y CUANDO EL MES DE INGRESO SEA IGUAL AL MES DE LIQUIDACION    
+* Patrón: DIATRAMESE - Descripción: DEVUELVE LOS DIAS TRABAJADOS EN EL MES DE EGRESO      
+* Patrón: DIATRASEIn - Descripción: DIAS TRABAJADOS EN LOS ULTIMOS SEIS MESES, INCLUIDO EL MES DE LIQUIDACION SI n = 1, O SIN INCLUIR EL MES DE LIQUIDA- CIO SI n = 2.    
+* Patrón: DIATRASEMn - Descripción: DEVUELVE LA CANTIDAD DE DIAS TRABAJADOS EN EL SEMESTRE n (n PUEDE SER 1 O 2 ) SI n = 1 => DE ENERO A JUNIO SI n = 2 => DE JULIO A DICIEMBRE    
+* Patrón: EDAD       - Descripción: DEVUELVE LA EDAD DEL EMPLEADO.       
+* Patrón: EMBARGOn   - Descripción: DEVUELVE EL SALDO DEL EMBARGO n.       
+* Patrón: Ennnnxxxxz - Descripción: ESTA VARIABLE DEVUELVE LA SUMA DE LOS CONCEPTOS DESDE EL nnnn AL zzzz, TOMANDO SI z = 0 LA COMPOSICION SALARIAL DEL EM/ PLEADO, SI z>0, z COMPOSICIONES SALARIA/ LES SUPERIORES A LAS DEL EMPLEADO. (ESPECIALIZACION)  
+* Patrón: ESPECn     - Descripción: ESTA VARIABLE DEVUELVE EL IMPORTE CORRES PONDIENTE AL BASICO DE UNA CATEGORIA. SI n ES 0 (CERO), SERA LA CATEGORIA DEL EMPLEADO SI n ES MAYOR QUE 0 (CERO), SERA n CATE- GORIAS SUPERIORES A LA DEL EMPLEADO  
+* Patrón: F572DEDxx  - Descripción: IMPORTE DE LAS DEDUCCIONES DONDE xx INDICA EL CÓDIGO DE DEDUCCIÓN     
+* Patrón: F572DRE    - Descripción: BUSCA EN EL MANTENIMIENTO DE F572 LA ULTIMA PRESENTACIÓN DEL AÑO. OBTIENE LOS IMPORTES INFORMADOS EN OTRAS REMUNE- RACIONES EN CONCEPTO DE OBRA SOCIAL, SINDICATO Y RETENCIÓN DE GANANCIAS Y LOS ACUMULA  
+* Patrón: F572FACO   - Descripción: DEDUCCION CONYUGE 572       
+* Patrón: F572FADI   - Descripción: DEVUELVE EL IMPORTE DE DEDUCCION POR HIJO/HIJASTRO INCAPACITADO PARA EL TRABAJO PRESENTADO EN EL FORMULARIO 572   
+* Patrón: F572FAHI   - Descripción: DEDUCCION HIJO 572       
+* Patrón: F572FAOT   - Descripción: DEDUCCION OTRAS CARGAS 572       
+* Patrón: F572HOE    - Descripción: PLURIEMPLEO HORAS EXT. 2       
+* Patrón: F572HOR    - Descripción: PLURIEMPLEO HORAS EXT. 1       
+* Patrón: F572MOTx   - Descripción: DEVUELVE LA SUMATORIA DE LOS IMPORTES DE LAS DEDUCCIONES TIPO 99 Y DEL MOTIVO INDICADO EN x, QUE EL EMPLEADO PRESENTO EN SU ULTIMA PRESENTACION DEL FORMULARIO 572 DEL AÑO.   
+* Patrón: F572OGC    - Descripción: PLURIEMPLEO GANANCIAS       
+* Patrón: F572ORE    - Descripción: BUSCA EN EL MANTENIMIENTO DE F572 LA ULTIMA PRESENTACIÓN DEL AÑO. OBTIENE LOS IMPORTES INFORMADOS EN OTRAS REMUNE- RACIONES EN CONCEPTO DE GANANCIA BRUTA, RETRIBUCIONES NO HABITUALES Y AJUSTE Y LOS ACUMULA  
+* Patrón: F572OSE    - Descripción: PLURIEMPLEO SEG.SOCIAL       
+* Patrón: F572OSI    - Descripción: PLURIEMPLEO SINDICATO       
+* Patrón: F572OSS    - Descripción: PLURIEMPLEO OBRA SOCIAL       
+* Patrón: F572SAC    - Descripción: PLURIEMPLEO SAC       
+* Patrón: FAMIxyz    - Descripción: SALARIO FAMILIA: CANTIDAD DE FAMILIARES DE CADA EMPLEADO, CUYOS CODIGOS COINCI\ DAN CON LOS INDICADOS EN xyz, SIEMPRE QUE NO SEAN CERO. x - CODIGO DE FAMILIAR y - CODIGO DE HIJO z - CODIGO DE ESCILARIDAD 
+* Patrón: FERIANT    - Descripción: DEVUELVE LA CANTIDAD DE DIAS FERIADOS DEL MES ANTERIOR AL QUE ESTOY LIQUIDANDO.     
+* Patrón: FERITRAB   - Descripción: DEVUELVE LA CANTIDAD DE DIAS FERIADOS TRABAJADOS POR UN EMPLEADO, DENTRO DEL PERIODO CORRESPONDIENTE AL MES DE LIQUI- DACION.    
+* Patrón: FERIx      - Descripción: devuelve la cantidad de feriados en el mes segun el dia del mes que caiga el feriado feri1 es domingo feri2 es lunes feri3 es martes  
+* Patrón: FRENTE     - Descripción: DEVULEVE EL CODIGO DE FRENTE DE TRABAJO DEL EMPLEADO      
+* Patrón: FVA1nnnn   - Descripción: ESTA VARIABLE DEVUELVE EL VALOR 1 DE LA TABLA DE CODIGOS FIJOS DEL CONCEPTO nnnn (SI nnnn ES 0000, ES EL CONCEPTO QUE SE ESTA CALCULANDO), DEL LEGAJO QUE SE ESTA LIQUIDANDO.   
+* Patrón: FVA2nnnn   - Descripción: ESTA VARIABLE DEVUELVE EL VALOR 2 DE LA TABLA DE CODIGOS FIJOS DEL CONCEPTO nnnn (SI nnnn ES 0000, ES EL CONCEPTO QUE SE ESTA CALCULANDO), DEL LEGAJO QUE SE ESTA LIQUIDANDO.   
+* Patrón: FVA3nnnn   - Descripción: ESTA VARIABLE DEVUELVE EL VALOR 3       
+* Patrón: GANPxxxxLN - Descripción: BUSCA Y ARMA EL PROMEDIO DESDE CONCEPTO XXXXX Y MES Y AÑO DE LA PARVAR L Tipo de liquidación, N=Quincena     
+* Patrón: GASTOSEDUC - Descripción: Gastos Educativos Ganancias       
+* Patrón: GCIAxxxx   - Descripción: BUSCA SEGUN EL VALOR DEL CONCEPTO XXXX EN LA TABLA DE GCIAS ANEXO IV      
+* Patrón: GENNETACU  - Descripción: Devuelve el valor de la ganancia neta acumulada del mes anterior al que se está calculando. En enero, devuelve cero.    
+* Patrón: GRUPO      - Descripción: Devuelve la variable EmpGru de la EMple2 Campo Prepaga      
+* Patrón: GRUTRAB    - Descripción: Devuelve el grupo de trabajo del empleado.      
+* Patrón: GUARDERIA  - Descripción: Devuelve la cantidad de hijos menores a 6 años que tengan cargado la fecha de inicio de guarderia.     
+* Patrón: INASISTEN  - Descripción: ESTA VARIABLE DEVUELVE LA CANTIDAD DE DIAS DE INASISTENCIA QUE SE DESCUENTAN DEL PRESENTISMO.     
+* Patrón: INFOnnnn   - Descripción: TOMA LO INFORMADO EN EL PARTE DE NOVE- DADES EN PARA EL CODIGO DE CONCEPTO QUE SE INDICA EN nnnn. SI nnnn ES 0000 CORRESPONDE AL CONCEPTO QUE SE ESTA LIQUIDANDO.   
+* Patrón: Lnnnnaammq - Descripción: ESTA VARIABLE DEVUELVE EL IMPORTE DEL CONCEPTO LIQUIDADO EN UNA LIQUIDACION NORMAL DE ACUERDO AL SIGUIENTE DETALLE: nnnn = CODIGO DE CONCEPTO aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q = QUINCENA DE LA LIQUIDACION (SI ES MENSUAL DEBE SER 2)
+* Patrón: MESANTIG   - Descripción: ESTA VARIABLE DEVUELVE EL MES EN QUE EL EMPLEADO CUMPLE AÑOS DE ANTIGUEDAD      
+* Patrón: MESCOBBAE  - Descripción: MES COBRO BAE DEL EMPLEADO       
+* Patrón: MESF0000   - Descripción: DEVUELVE EL MES DESDE DE LA VIGENCIA DE LOS FIJOS POR EMPLEADOS PARA EL CON- CEPTO INDICADO EN 0000.     
+* Patrón: MESLIQ     - Descripción: DEVUELVE EL MES DE LIQUIDACION QUE SE ESTA PROCESANDO.      
+* Patrón: MESNACIM   - Descripción: DEVUELVE EL MES DE NACIMIENTO DEL EMPLE- ADO.      
+* Patrón: MESTRAxx   - Descripción: DEVUELVE LOS MESES TRABAJADOS DESDE LA FECHA DE INGRESO HASTA LA LIQUIDACION, REDONDEANDO EN UN MES MAS SI INGRESO UN DIA <= xx.    
+* Patrón: MMnnnnnnnn - Descripción: BUSCA EL MENOR VALOR ENTRE nnnn Y nnnn CONCEPTOS      
+* Patrón: MODCONT    - Descripción: devuelve la modalidad de contratacion relacionada al empleado en el mantenimiento de empleados     
+* Patrón: MOTxxaacc  - Descripción: CANTIDAD DE AUSENCIAS MOTIVO xx DEL AÑO aa ANTERIOR A LA LIQUIDACION Y SUPERIO- RES A cc     
+* Patrón: MSEMnnnnxl - Descripción: DEVUELVE EL MAYOR IMPORTE LIQUIDADO DEL CONCEPTO INDICADO EN nnnn PARA EL SEMEST RE INDICADO EN x  DE LA LIQUIDACION TIPO l PUEDE SER L,V,B,A,O.    
+* Patrón: OBRASOC    - Descripción: DEVUELVE EL CODIGO DE OBRA SOCIAL DEL EMPLEADO.      
+* Patrón: P572DEDxx  - Descripción: trae el valor del formulario f572 del tipo de decuccion xx no realiza el corte cuando se encuentra la parvar ACUMES y ACUAÑO Se crea para las percepciones año 2023   
+* Patrón: PARLIQnnn  - Descripción: BUSCAR LOS PARAMETROS DE LIQUIDACION EN LA TABLA PARLIQ nnnn ES EL NUMERO DE PARAMETRO A BUSCAR.     
+* Patrón: PBAEACUMn  - Descripción: PORCENTAJE BAE ACUMULADO. SI n = 0  PORCENTAJE ANTERIOR n = 1  PORCENTAJE SIGUIENTE     
+* Patrón: PBAEANTIGA - Descripción: PORCENTAJE SEGUN EL MES DE ANTIGUEDAD BAE DEL EMPLEADO      
+* Patrón: PBAEANTIGC - Descripción: PORCENTAJE SEGUN EL MES DE COBRO BAE DEL EMPLEADO      
+* Patrón: PCOMnnnn   - Descripción: VALOR CORRESPONDIENTE AL CONCEPTO QUE SE ESTA LIQUIDANDO, EN LA COMPOSICION SALA/ RIAL INDICADA EN nnnn. SI SE DEJA 0000, TOMARA LA COMPOSICION SALARIAL DEL EMPLE ADO QUE SE ESTA LIQUIDANDO   
+* Patrón: PCONnnnn   - Descripción: buscar el valor del concepto nnnn de la composicion salarial del empleado      
+* Patrón: PCONXnnnnZ - Descripción: valor del concepto nnnn de la composicin salarial del empleado + Z      
+* Patrón: PERTOPE    - Descripción: PERIODO TOPE DE CALCULO CONCATENA AÑO Y MES PARA HACER UN NUMERO HASTA EJ: AÑO 2022 MES 5 = 202205     
+* Patrón: PRESTAMO   - Descripción: DEVUELVE LA CUOTA A DESCONTAR DEL PRESTAMO.      
+* Patrón: PROMEDIO   - Descripción: ESTA VARIABLE DEVUELVE EL VALOR DEL CAMPO PROMEDIO  DEL MAESTRO DE EMPLEADOS     
+* Patrón: PROVACnnnn - Descripción: DEVUELVE EL IMPORTE A COMPUTAR DE LAS VACACIONES  PARA EL SAC  , EN FUNCION DE LOS DIAS TOMADOS EN CADA MES. SE DEBE INDICAR EN nnnn EL CONCEPTO DE VACACIONES.   
+* Patrón: QUINCENA   - Descripción: QUINCENA QUE SE ESTA PROCESANDO       
+* Patrón: RCALIGxxxx - Descripción: RECALCULO GANANCIAS 473-2023 Devuelve el calculo de ganancias del concepto indicado en nnnn     
+* Patrón: RDEDUC1    - Descripción: Devuelve el valor deL campo deduccion indicada en deduccion 1      
+* Patrón: REDOnnnn   - Descripción: DEVUELVE EL REDONDEO DEL CONCEPTO INDICADO EN nnnn.      
+* Patrón: RG5800     - Descripción: Busca el primer valor de la tabla de gcias para el incremento del 2do tramo     
+* Patrón: RGCAFACO   - Descripción: DEVUELVE EL VALOR DEL CAMPO CARGA DE FA- MILIA (CONYUGE) DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGCAFACOFI - Descripción: DEVUELVE EL VALOR POR CONYUGE       
+* Patrón: RGCAFAHI   - Descripción: DEVUELVE EL VALOR DEL CAMPO CARGA DE FA- MILIA (HIJO) DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGCAFAHIFI - Descripción: DEVUELVE EL TOTAL POR HIJOS       
+* Patrón: RGCAFAOT   - Descripción: DEVUELVE EL VALOR DEL CAMPO CARGA DE FA- MILIA (OTROS) DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGCAFAOTFI - Descripción: DEVUELVE EL TOTAL DE OTRAS CARGAS       
+* Patrón: RGDEDINA   - Descripción: DEVUELVE EL VALOR DEL CAMPO DEDUCC.ESPE- CIAL INC.A/B/C  DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGDEDIND   - Descripción: DEVUELVE EL VALOR DEL CAMPO DEDUCC.ESPE- CIALES INC.D    DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGGANOIM   - Descripción: DEVUELVE EL VALOR DEL CAMPO GANANCIA NO IMPONIBLE DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGPRIMSE   - Descripción: DEVUELVE EL VALOR DEL CAMPO PRIMA SEGURO DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: RGSEGSEP   - Descripción: DEVUELVE EL VALOR DEL CAMPO GASTOS DE SEPELIO  DE LA TABLA DE ESCALAS DE RETENCION GANANCIAS     
+* Patrón: SACDIA     - Descripción: DIAS DE SAC DEL SEMESTRE SEGUN EL MES Y SEMESTRE LIQUIDADO.      
+* Patrón: SCxxxxnnnn - Descripción: DEVUELVE LA SUMATORIA DE LOS CONCEPTOS DEL RANGO DE CODIGOS INDICADOS EN xxxx Y nnnn.(SOLO DEFINITIVOS)     
+* Patrón: SEXO       - Descripción: DEVUELVE UN 1 SI EL SEXO DEL EMPLEADO ES FEMENINO O UN 2 SI ES MASCULINO.      
+* Patrón: SInnnnxxxx - Descripción: DEVUELVE LA SUMATORIA DE LOS VALORES INFORMADOS DESDE EL CONCEPTO nnnn AL xxxxx     
+* Patrón: Snnnnxxxxl - Descripción: SUMATORIA DE LOS IMPORTES CALCULADOS EN LOS CONCEPTOS COMPRENDIDOS ENTRE nnnn Y xxxx, CORRESPONDIENTES A LA ULTIMA LIQUIDACION DE TIPO l. SOLO SE SUMAN LOS CONCEPTOS DEFINITIVOS.   
+* Patrón: STxxxxnnnn - Descripción: DEVUELVE LA SUMATORIA DE LOS CONCEPTOS TRANSITORIOS DESDE EL CONCEPTO xxxx AL nnnn     
+* Patrón: SUEMAANOnl - Descripción: DEVUELVE EL MAYOR SUELDO DEL ULTIMO AÑO DE LA LIQUIDACION l: AL MOMENTO DE LA LIQUIDACION SI n = 1, AL MES ANTERIOR DE LA LIQUIDACION SI n=2  l PUEDE SER L,A,B,O o V.  
+* Patrón: SUEMASEInl - Descripción: DEVUELVE EL MAYOR SUELDO DE LOS ULTIMOS SEIS MESES, AL MES ANTERIOR A LA LIQUI- DACION SI n = 2, O AL MES DE LA LIQUIDA- CION SI n = 1 l PUEDE SE L,A,B,O o V.   
+* Patrón: SUEMASEMnl - Descripción: DEVUELVE EL MAYOR SUELDO DEL SEMESTRE n, Y TIPO DE LIQUIDACION l. n PUEDE SER 1 o 2. l PUEDE SER L,A,B,O,o V.    
+* Patrón: TAPaammql  - Descripción: ESTA VARIABLE DEVUELVE EL TOTAL DE APOR- TES DE UNA LIQUIDACION DE ACUERDO AL SIGUIENTE DETALLE: aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q  = QUINCENA DE LA LIQUIDACION l  = TIPO DE LIQUIDACION 
+* Patrón: TARDANZA   - Descripción: DEVUELVE LA CANTIDAD DE DIAS EN QUE UN EMPLEADO TUVO TARDANZAS, DENTRO DEL RAN_ GO DE PERIODO CORRESPONDIENTE AL MES DE LIQUIDACION.    
+* Patrón: TCRaammql  - Descripción: ESTA VARIABLE DEVUELVE EL TOTAL DE REMU- NERACIONES CON APORTES DE UNA LIQUIDAC. DE ACUERDO AL SGTE. DETALLE: aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q  = QUINCENA DE LA LIQUIDACION l  = TIPO DE LIQUIDACION 
+* Patrón: TDEaammql  - Descripción: ESTA VARIABLE DEVUELVE EL TOTAL DE DES- CUENTOS DE UNA LIQUIDACION DE ACUERDO AL SIGUIENTE DETALLE: aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q  = QUINCENA DE LA LIQUIDACION l  = TIPO DE LIQUIDACION 
+* Patrón: TIPOEMP    - Descripción: DEVUELVE EL TIPO DE EMPLEADO. SI ES 1 TOMA LOS LEGAJOS MENSUALES, SI ES 2 TO- MA LOS JORNALIZADOS, SI ES 3 LOS VENDEDO RES.    
+* Patrón: TIPOLIQ    - Descripción: ESTA VARIABLE DEVUELVE UN 1 SI ES UNA LIQUIDACION NORMAL, UN 2 SI ES DE S.A.C. Y UN 3 SI ES DE B.A.E.     
+* Patrón: TMOxxaacc  - Descripción: CANTIDAD DE AUSENCIA POR TIPO DE MOTIVO xx DE aa AÑOS ANTERIORES A LA LIQUIDA- CION SUPERIORES A cc.     
+* Patrón: TOTEMBAR   - Descripción: total deuda embargo       
+* Patrón: TREaammql  - Descripción: ESTA VARIABLE DEVUELVE EL TOTAL DE RETEN CIONES DE UNA LIQUIDACION DE ACUERDO AL SIGUIENTE DETALLE: aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q  = QUINCENA DE LA LIQUIDACION l  = TIPO DE LIQUIDACION 
+* Patrón: TSFaammql  - Descripción: ESTA VARIABLE DEVUELVE EL TOTAL DE SAL. FAMILIAR DE UNA LIQUIDACION DE ACUERDO AL SIGUIENTE DETALLE: aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q  = QUINCENA DE LA LIQUIDACION l  = TIPO DE LIQUIDACION 
+* Patrón: TSRaammql  - Descripción: ESTA VARIABLE DEVUELVE EL TOTAL DE REMU- NERACIONES SIN APORTES DE UNA LIQUIDAC. DE ACUERDO AL SGTE. DETALLE: aa = AÑO DE LA LIQUIDACION mm = MES DE LA LIQUIDACION q  = QUINCENA DE LA LIQUIDACION l  = TIPO DE LIQUIDACION 
+* Patrón: TTAPmmql   - Descripción: TOTAL APORTES PATRONALES CORRESPONDIENTES A mm MESES ANTERIORES DE LA LIQUIDACION TIPO l, Y QUINCENA q. (q = 0 : AMBAS QUINCENAS)    
+* Patrón: TTCRmmql   - Descripción: TOTAL REMUNERACIONES CON DESCUENTOS CORRESPONDIENTES A mm MESES ANTERIORES DE LA LIQUIDACION TIPO l, Y QUINCENA q. (q = 0 : AMBAS QUINCENAS)    
+* Patrón: TTDEmmql   - Descripción: TOTAL OTRAS DEDUCCIONES CORRESPONDIENTES A mm MESES ANTERIORES DE LA LIQUIDACION TIPO l, Y QUINCENA q. (q = 0 : AMBAS QUINCENAS)    
+* Patrón: TTREmmql   - Descripción: TOTAL RETENCIONES CORRESPONDIENTES A mm MESES ANTERIORES DE LA LIQUIDACION TIPO l, Y QUINCENA q. (q = 0 : AMBAS QUINCENAS)    
+* Patrón: TTSFmmql   - Descripción: TOTAL SALARIO FAMILIAR CORRESPONDIENTES A mm MESES ANTERIORES DE LA LIQUIDACION TIPO l, Y QUINCENA q. (q = 0 : AMBAS QUINCENAS)    
+* Patrón: TTSRmmql   - Descripción: TOTAL REMUNERACIONES SIN DESCUENTOS CORRESPONDIENTES A mm MESES ANTERIORES DE LA LIQUIDACION TIPO l, Y QUINCENA q. (q = 0 : AMBAS QUINCENAS)    
+* Patrón: VACANOLIQ  - Descripción: AÑO DE LIQUIDACION INFORMADO EN MANTENI- MIENTO DE VACACIONES.      
+* Patrón: VACDIADCT  - Descripción: DIAS DE VACACIONES QUE SE TOMA EL EMPLE- ADO, CORRESPONDIENTES AL MES DE LIQUIDA- CION, CALCULADOS ENTRE LAS FECHAS INDI- CADAS EN EL MANTENIMIENTO DE VACACIONES.    
+* Patrón: VACDIADIG  - Descripción: DIAS DE VACACIONES QUE SE TOMA EL EMPLE- ADO, CORRESPONDIENTES AL MES DE LIQUIDA- CION, INFORMADOS EN EL MANTENIMIENTO DE VACACIONES. PUEDE NO SER IGUAL EL CALCU- DO ENTRE LAS FECHAS DIGITADAS.   
+* Patrón: VACDIADL1  - Descripción: dias vacaciones en fechas desde/hasta simpre que mes de liquidacion no coincida con el del contexto y busca 1 mes para atras    
+* Patrón: VACDIADL2  - Descripción: dias vacaciones en fechas desde/hasta simpre que mes de liquidacion no coincida con el del contexto y busca 2 mes para atras    
+* Patrón: VACDIADLI  - Descripción: dias vac entre las fechas desde hasta siempre que coincidan mes liquidacion y año de liquidacion con el contesto     
+* Patrón: VACDIALIQ  - Descripción: DIAS VACACIONES A LIQUIDAR CORRIDOS SI MES, AÑO Y TIPO DE LIQUIDACION COINCIDEN.     
+* Patrón: VACDIAVAC  - Descripción: DIAS DE VACACIONES QUE LE CORRESPONDEN AL EMPLEADO POR ANTIGUEDAD Y CONVENIO.      
+* Patrón: VACMESLIQ  - Descripción: MES DE LIQUIDACION INFORMADO EN MANTENI- MIENTO DE VACACIONES.      
+* Patrón: VAL1nnnn   - Descripción: TOMA EL VALOR 1 DEL CAMPO DEL CONCEPTO INDICADO EN nnnn. SI nnnn ES 0000, TOMA EL CONCEPTO QUE SE ESTA LIQUIDANDO.     
+* Patrón: VAL2nnnn   - Descripción: TOMA EL VALOR 2 DEL CAMPO DEL CONCEPTO INDICADO EN nnnn. SI nnnn ES 0000, TOMA EL CONCEPTO QUE SE ESTA LIQUIDANDO.     
+* Patrón: VAL3nnnn   - Descripción: TOMA EL VALOR 3 DEL CAMPO DEL CONCEPTO INDICADO EN nnnn. SI nnnn ES 0000, TOMA EL CONCEPTO QUE SE ESTA LIQUIDANDO.     
+* Patrón: ZAPxxyyqal - Descripción: DEVUELVE EL TOTAL DE APORTES PATRONALES, SEGUN: xx : MES DESDE yy : MES HASTA q  : QUINCENA 1 O 2, (0 AMBAS) a  : AÑOS ANTERIORES AL DE LA LIQUID. l  : TIPO DE LIQUIDACION 
+* Patrón: ZCRxxyyqal - Descripción: DEVUELVE EL TOTAL DE REMUNERACIONES SUJETAS A RETENCION, SEGUN: xx : MES DESDE yy : MES HASTA q  : QUINCENA 1 O 2, (0 AMBAS) a  : AÑOS ANTERIORES AL DE LA LIQUID. l  : TIPO DE LIQUIDACION 
+* Patrón: ZDExxyyqal - Descripción: DEVUELVE EL TOTAL DE OTRAS DEDUCCIONES, SEGUN: xx : MES DESDE yy : MES HASTA q  : QUINCENA 1 O 2, (0 AMBAS) a  : AÑOS ANTERIORES AL DE LA LIQUID. l  : TIPO DE LIQUIDACION 
+* Patrón: ZRExxyyqal - Descripción: DEVUELVE EL TOTAL DE RETENCIONES, SEGUN: xx : MES DESDE yy : MES HASTA q  : QUINCENA 1 O 2, (0 AMBAS) a  : AÑOS ANTERIORES AL DE LA LIQUID. l  : TIPO DE LIQUIDACION 
+* Patrón: ZSFxxyyqal - Descripción: DEVUELVE EL TOTAL DE SALARIO FAMILIAR, SEGUN: xx : MES DESDE yy : MES HASTA q  : QUINCENA 1 O 2, (0 AMBAS) a  : AÑOS ANTERIORES AL DE LA LIQUID. l  : TIPO DE LIQUIDACION 
+* Patrón: ZSRxxyyqal - Descripción: DEVUELVE EL TOTAL DE REMUNERACIONES NO SUJETAS A RETENCION, SEGUN: xx : MES DESDE yy : MES HASTA q  : QUINCENA 1 O 2, (0 AMBAS) a  : AÑOS ANTERIORES AL DE LA LIQUID. l  : TIPO DE LIQUIDACION 
+ 
+ 

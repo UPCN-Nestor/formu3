@@ -1,0 +1,37 @@
+{
+    "name": "Formu3 Dev Environment",
+    "image": "mcr.microsoft.com/devcontainers/java:17-bookworm",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
+        },
+        "ghcr.io/devcontainers/features/java:1": {
+            "version": "17",
+            "installMaven": "true",
+            "installGradle": "false"
+        }
+    },
+    "forwardPorts": [
+        8080,
+        5173
+    ],
+    "postCreateCommand": "sudo apt-get update && sudo apt-get install -y maven && cd frontend && npm install",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "vscjava.vscode-java-pack",
+                "vscjava.vscode-spring-boot-dashboard",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode"
+            ],
+            "settings": {
+                "java.configuration.updateBuildConfiguration": "automatic"
+            }
+        }
+    },
+    "remoteEnv": {
+        "SPRING_DATASOURCE_URL": "jdbc:sqlserver://host.docker.internal:1433;database=UPCN_RRHH_PRUE;encrypt=false;trustServerCertificate=true",
+        "SPRING_DATASOURCE_USERNAME": "UPCN-admin",
+        "SPRING_DATASOURCE_PASSWORD": "UPCN-2018+"
+    }
+}
