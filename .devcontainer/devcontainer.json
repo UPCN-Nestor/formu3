@@ -15,7 +15,7 @@
         8080,
         5173
     ],
-    "postCreateCommand": "sudo apt-get update && sudo apt-get install -y maven && cd frontend && npm install",
+    "postCreateCommand": "sudo apt-get update && sudo apt-get install -y maven && git config --global user.name 'Nestor Echegoyen' && git config --global user.email 'nestor.echegoyen@upcnecochea.com.ar' && cd frontend && npm install",
     "customizations": {
         "vscode": {
             "extensions": [

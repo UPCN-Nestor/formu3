@@ -94,72 +94,20 @@ export function generateId(): string {
 /**
  * Calcula la posición para un nuevo nodo basado en su origen
  */
-/**
- * Calcula la posición para un nuevo nodo basado en su origen
- * Evita superposiciones verificando existingPositions
- */
 export function calculateNodePosition(
     sourcePosition: { x: number; y: number },
     direction: 'up' | 'down',
     index: number,
-    total: number,
-    existingPositions: { x: number; y: number }[] = []
+    total: number
 ): { x: number; y: number } {
-    // Dimensiones estimadas del nodo + gap
-    const NODE_WIDTH = 350; // Ancho (320px max) + margen
-    const NODE_HEIGHT = 150; // Alto variable, pero usamos un paso fijo para niveles
-    const LEVEL_HEIGHT = 220; // Separación vertical entre niveles
+    const verticalOffset = direction === 'up' ? -180 : 180;
+    const horizontalSpacing = 280;
+    const startX = sourcePosition.x - ((total - 1) * horizontalSpacing) / 2;
 
-    const verticalOffset = direction === 'up' ? -LEVEL_HEIGHT : LEVEL_HEIGHT;
-    const targetY = sourcePosition.y + verticalOffset;
-
-    // Calcular ancho total del grupo para centrarlo
-    const totalWidth = total * NODE_WIDTH;
-    const groupStartX = sourcePosition.x - totalWidth / 2 + NODE_WIDTH / 2;
-
-    // Posición ideal X
-    const idealX = groupStartX + index * NODE_WIDTH;
-
-    // Verificar si una posición colisiona con nodos existentes
-    const isColliding = (x: number, y: number) => {
-        return existingPositions.some(pos =>
-            Math.abs(pos.y - y) < LEVEL_HEIGHT / 2 && // Misma fila (aprox)
-            Math.abs(pos.x - x) < NODE_WIDTH * 0.9 // Solapamiento horizontal significativo
-        );
+    return {
+        x: startX + index * horizontalSpacing,
+        y: sourcePosition.y + verticalOffset,
     };
-
-    // Si la posición ideal está libre, usarla
-    if (!isColliding(idealX, targetY)) {
-        return { x: idealX, y: targetY };
-    }
-
-    // Si hay colisión, buscar hueco alternando derecha e izquierda
-    let offset = 1;
-    let finalX = idealX;
-    let found = false;
-
-    // Límite de búsqueda para evitar loop infinito
-    while (!found && offset < 50) {
-        // Intentar derecha
-        const rightX = idealX + offset * NODE_WIDTH;
-        if (!isColliding(rightX, targetY)) {
-            finalX = rightX;
-            found = true;
-            break;
-        }
-
-        // Intentar izquierda
-        const leftX = idealX - offset * NODE_WIDTH;
-        if (!isColliding(leftX, targetY)) {
-            finalX = leftX;
-            found = true;
-            break;
-        }
-
-        offset++;
-    }
-
-    return { x: finalX, y: targetY };
 }
 
 /**
