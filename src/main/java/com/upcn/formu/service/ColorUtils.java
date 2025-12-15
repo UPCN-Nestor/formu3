@@ -7,6 +7,57 @@ package com.upcn.formu.service;
 public class ColorUtils {
 
     /**
+     * Par de colores coherentes: fondo (pastel) y borde (más oscuro).
+     */
+    public record ColorPair(String background, String border) {}
+
+    /**
+     * Calcula el hash con bit mixing para mejor distribución.
+     */
+    private static int computeHash(String input) {
+        int hash = 0;
+        for (char c : input.toCharArray()) {
+            hash = 31 * hash + c;
+        }
+
+        // Bit mixing para mejor distribución de colores
+        hash = hash ^ (hash >>> 16);
+        hash = hash * 0x85ebca6b;
+        hash = hash ^ (hash >>> 13);
+        hash = hash * 0xc2b2ae35;
+        hash = hash ^ (hash >>> 16);
+        return Math.abs(hash);
+    }
+
+    /**
+     * Genera un par de colores coherentes (fondo y borde) desde el mismo hash.
+     * Ambos colores tienen el mismo hue, diferente saturación y luminosidad.
+     * 
+     * @param input String para generar los colores
+     * @return ColorPair con background (pastel) y border (más oscuro)
+     */
+    public static ColorPair hashToColors(String input) {
+        if (input == null || input.isBlank()) {
+            return new ColorPair("hsl(0, 0%, 90%)", "hsl(0, 0%, 60%)");
+        }
+
+        int hash = computeHash(input);
+        int hue = hash % 360;
+
+        // Fondo: pastel (saturación media-alta, luminosidad alta)
+        int bgSaturation = 65 + (hash / 360 % 20); // 65-85%
+        int bgLightness = 80 + (hash / 7200 % 10); // 80-90%
+        String background = String.format("hsl(%d, %d%%, %d%%)", hue, bgSaturation, bgLightness);
+
+        // Borde: mismo hue, más saturado y oscuro
+        int borderSaturation = 50 + (hash / 360 % 20); // 50-70%
+        int borderLightness = 40 + (hash / 7200 % 15); // 40-55%
+        String border = String.format("hsl(%d, %d%%, %d%%)", hue, borderSaturation, borderLightness);
+
+        return new ColorPair(background, border);
+    }
+
+    /**
      * Genera un color HSL basado en el hash del input.
      * El color es pastel para usar como fondo de rectángulos.
      * 
@@ -14,25 +65,7 @@ public class ColorUtils {
      * @return Color en formato "hsl(h, s%, l%)"
      */
     public static String hashToColor(String input) {
-        if (input == null || input.isBlank()) {
-            return "hsl(0, 0%, 90%)"; // Gris claro por defecto
-        }
-
-        // Calcular hash simple
-        int hash = 0;
-        for (char c : input.toCharArray()) {
-            hash = 31 * hash + c;
-        }
-        hash = Math.abs(hash);
-
-        // Usar el hash para generar hue (0-360)
-        int hue = hash % 360;
-
-        // Saturación y luminosidad fijas para colores pastel agradables
-        int saturation = 65 + (hash % 20); // 65-85%
-        int lightness = 80 + (hash % 10); // 80-90%
-
-        return String.format("hsl(%d, %d%%, %d%%)", hue, saturation, lightness);
+        return hashToColors(input).background();
     }
 
     /**
@@ -42,31 +75,6 @@ public class ColorUtils {
      * @return Color en formato "hsl(h, s%, l%)"
      */
     public static String hashToBorderColor(String input) {
-        if (input == null || input.isBlank()) {
-            return "hsl(0, 0%, 60%)";
-        }
-
-        int hash = 0;
-        for (char c : input.toCharArray()) {
-            hash = 31 * hash + c;
-        }
-        hash = Math.abs(hash);
-
-        int hue = hash % 360;
-        int saturation = 50 + (hash % 20); // 50-70%
-        int lightness = 40 + (hash % 15); // 40-55%
-
-        return String.format("hsl(%d, %d%%, %d%%)", hue, saturation, lightness);
-    }
-
-    /**
-     * Genera un color de texto legible para el fondo dado.
-     * 
-     * @param input String para generar el color base
-     * @return Color de texto oscuro o claro según el fondo
-     */
-    public static String hashToTextColor(String input) {
-        // Para fondos pastel, el texto oscuro siempre es legible
-        return "hsl(0, 0%, 20%)";
+        return hashToColors(input).border();
     }
 }

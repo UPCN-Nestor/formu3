@@ -47,9 +47,14 @@ public class RangoConceptosDTO {
     private List<ConceptoResumenDTO> conceptos;
 
     /**
-     * Color calculado basado en hash del id
+     * Color de fondo calculado basado en hash del id
      */
     private String color;
+    
+    /**
+     * Color de borde calculado basado en hash del id
+     */
+    private String borderColor;
 
     /**
      * DTO resumido de concepto para mostrar en lista
@@ -63,5 +68,6 @@ public class RangoConceptosDTO {
         private String descripcion;
         private boolean definitivo;
         private String color;
+        private String borderColor;
     }
 }

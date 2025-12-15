@@ -30,7 +30,7 @@
         }
     },
     "remoteEnv": {
-        "SPRING_DATASOURCE_URL": "jdbc:sqlserver://host.docker.internal:1433;database=UPCN_RRHH_PRUE;encrypt=false;trustServerCertificate=true",
+        "SPRING_DATASOURCE_URL": "jdbc:sqlserver://192.168.0.227:1433;database=UPCN_RRHH_PRUE;encrypt=false;trustServerCertificate=true",
         "SPRING_DATASOURCE_USERNAME": "UPCN-admin",
         "SPRING_DATASOURCE_PASSWORD": "UPCN-2018+"
     }

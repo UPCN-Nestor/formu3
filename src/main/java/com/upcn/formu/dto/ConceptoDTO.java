@@ -66,7 +66,12 @@ public class ConceptoDTO {
     private Double val3;
     
     /**
-     * Color calculado basado en hash del código
+     * Color de fondo calculado basado en hash del código
      */
     private String color;
+    
+    /**
+     * Color de borde calculado basado en hash del código (coherente con color)
+     */
+    private String borderColor;
 }

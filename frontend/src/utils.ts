@@ -16,30 +16,18 @@ export function hashToColor(input: string): string {
     for (let i = 0; i < input.length; i++) {
         hash = 31 * hash + input.charCodeAt(i);
     }
+
+    // Bit mixing para mejor distribución de colores
+    hash = hash ^ (hash >>> 16);
+    hash = Math.imul(hash, 0x85ebca6b);
+    hash = hash ^ (hash >>> 13);
+    hash = Math.imul(hash, 0xc2b2ae35);
+    hash = hash ^ (hash >>> 16);
     hash = Math.abs(hash);
 
     const hue = hash % 360;
     const saturation = 65 + (hash % 20);
     const lightness = 80 + (hash % 10);
-
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-}
-
-/**
- * Genera un color más oscuro para bordes
- */
-export function hashToBorderColor(input: string): string {
-    if (!input) return 'hsl(0, 0%, 60%)';
-
-    let hash = 0;
-    for (let i = 0; i < input.length; i++) {
-        hash = 31 * hash + input.charCodeAt(i);
-    }
-    hash = Math.abs(hash);
-
-    const hue = hash % 360;
-    const saturation = 50 + (hash % 20);
-    const lightness = 40 + (hash % 15);
 
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }

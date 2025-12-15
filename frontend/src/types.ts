@@ -46,6 +46,7 @@ export interface Concepto {
     val2?: number | null;
     val3?: number | null;
     color: string;
+    borderColor: string;
 }
 
 /** Resumen de concepto para listas */
@@ -54,6 +55,7 @@ export interface ConceptoResumen {
     descripcion: string;
     definitivo: boolean;
     color: string;
+    borderColor: string;
 }
 
 /** Rango de conceptos (para SC, ST, etc.) */
@@ -65,6 +67,7 @@ export interface RangoConceptos {
     descripcion: string;
     conceptos: ConceptoResumen[];
     color: string;
+    borderColor: string;
 }
 
 /** Información de liquidación */
@@ -114,6 +117,9 @@ export interface SavedEdge {
     target: string;
     type?: string;
 }
+
+/** Source of a dependency (formula, condition, or both) */
+export type DependencySource = 'formula' | 'condicion' | 'ambas';
 
 /** Estado del canvas */
 export interface CanvasState {

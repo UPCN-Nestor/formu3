@@ -129,12 +129,16 @@ public class ConceptoService {
                         default -> true;                // Todos
                     };
                 })
-                .map(c -> ConceptoResumenDTO.builder()
-                        .codigo(c.getCodConcepto())
-                        .descripcion(c.getDescripcionConcepto())
-                        .definitivo("D".equalsIgnoreCase(c.getTransitorioDefinitivo()))
-                        .color(ColorUtils.hashToColor(c.getCodConcepto()))
-                        .build())
+                .map(c -> {
+                    var colors = ColorUtils.hashToColors(c.getCodConcepto());
+                    return ConceptoResumenDTO.builder()
+                            .codigo(c.getCodConcepto())
+                            .descripcion(c.getDescripcionConcepto())
+                            .definitivo("D".equalsIgnoreCase(c.getTransitorioDefinitivo()))
+                            .color(colors.background())
+                            .borderColor(colors.border())
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         String descripcion = switch (tipo) {
@@ -146,6 +150,7 @@ public class ConceptoService {
             default -> "Rango de conceptos";
         };
 
+        var rangoColors = ColorUtils.hashToColors(rangoId);
         return RangoConceptosDTO.builder()
                 .id(rangoId)
                 .tipo(tipo)
@@ -153,7 +158,8 @@ public class ConceptoService {
                 .codigoFin(fin)
                 .descripcion(descripcion)
                 .conceptos(resumen)
-                .color(ColorUtils.hashToColor(rangoId))
+                .color(rangoColors.background())
+                .borderColor(rangoColors.border())
                 .build();
     }
 
@@ -177,7 +183,8 @@ public class ConceptoService {
                 .val1(concepto.getVal1())
                 .val2(concepto.getVal2())
                 .val3(concepto.getVal3())
-                .color(ColorUtils.hashToColor(concepto.getCodConcepto()))
+                .color(ColorUtils.hashToColors(concepto.getCodConcepto()).background())
+                .borderColor(ColorUtils.hashToColors(concepto.getCodConcepto()).border())
                 .build();
     }
 
@@ -195,7 +202,8 @@ public class ConceptoService {
                 .tiposLiquidacion(concepto.getTipoLiquidacion())
                 .orden(concepto.getOrden())
                 .definitivo(concepto.esDefinitivo())
-                .color(ColorUtils.hashToColor(concepto.getId()))
+                .color(ColorUtils.hashToColors(concepto.getId()).background())
+                .borderColor(ColorUtils.hashToColors(concepto.getId()).border())
                 .build();
     }
 

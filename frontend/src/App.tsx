@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactFlow, {
     Node,
     Edge,
@@ -18,12 +18,28 @@ import ConceptNode from './components/ConceptNode';
 import RangeNode from './components/RangeNode';
 import { conceptoApi, liquidacionApi } from './api';
 import { pantallaStorage, generateId, calculateNodePosition, hashToColor, findAvailablePosition } from './utils';
-import type { Concepto, FiltrosLiquidacion, Liquidacion, PantallaGuardada, Variable, RangoConceptos } from './types';
+import type { Concepto, FiltrosLiquidacion, Liquidacion, PantallaGuardada, Variable, RangoConceptos, DependencySource } from './types';
 
 // Tipos de nodos personalizados
 const nodeTypes: NodeTypes = {
     concept: ConceptNode,
     range: RangeNode,
+};
+
+/**
+ * Obtiene el estilo del edge según el origen de la dependencia
+ */
+const getEdgeStyle = (source: DependencySource, color: string): React.CSSProperties => {
+    switch (source) {
+        case 'formula':
+            return { stroke: color, strokeWidth: 2 };
+        case 'condicion':
+            return { stroke: color, strokeWidth: 2, strokeDasharray: '5,5' };
+        case 'ambas':
+            return { stroke: color, strokeWidth: 4 };
+        default:
+            return { stroke: color };
+    }
 };
 
 /**
@@ -40,11 +56,14 @@ const FlowCanvas: React.FC = () => {
     const [conceptoRaiz, setConceptoRaiz] = useState<string>('');
     const [conceptosCargados, setConceptosCargados] = useState<Map<string, Concepto>>(new Map());
 
+    // Estado de carga
+    const [isLoading, setIsLoading] = useState(false);
+
     // Referencia para mantener la función expandirConcepto actualizada
     const expandirConceptoRef = useRef<(codigo: string, direccion: 'dependencias' | 'dependientes') => void>();
 
     // Referencia para manejar clicks en variables
-    const onVariableClickRef = useRef<(variable: Variable, sourceNodeId: string) => void>();
+    const onVariableClickRef = useRef<(variable: Variable, sourceNodeId: string, depSource: DependencySource) => void>();
 
     // Referencia para manejar expansión de conceptos desde nodos de rango
     const onExpandConceptoFromRangeRef = useRef<(codigo: string, rangoNodeId: string) => void>();
@@ -88,6 +107,7 @@ const FlowCanvas: React.FC = () => {
             return;
         }
 
+        setIsLoading(true);
         try {
             const concepto = await conceptoApi.getById(codigo);
 
@@ -118,8 +138,8 @@ const FlowCanvas: React.FC = () => {
                     onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
                         expandirConceptoRef.current?.(codigo, direccion);
                     },
-                    onVariableClick: (variable: Variable) => {
-                        onVariableClickRef.current?.(variable, `concept-${codigo}`);
+                    onVariableClick: (variable: Variable, depSource: DependencySource) => {
+                        onVariableClickRef.current?.(variable, `concept-${codigo}`, depSource);
                     },
                 },
             };
@@ -134,6 +154,8 @@ const FlowCanvas: React.FC = () => {
 
         } catch (error) {
             console.error('Error cargando concepto:', error);
+        } finally {
+            setIsLoading(false);
         }
     }, [conceptosCargados, liquidaciones, conceptoRaiz, getNode, setNodes, nodes]);
 
@@ -154,43 +176,48 @@ const FlowCanvas: React.FC = () => {
         const sourceNode = getNode(`concept-${codigo}`);
         if (!sourceNode) return;
 
-        // Cargar cada concepto y crear edges
-        for (let i = 0; i < codigos.length; i++) {
-            const targetCodigo = codigos[i];
+        setIsLoading(true);
+        try {
+            // Cargar cada concepto y crear edges
+            for (let i = 0; i < codigos.length; i++) {
+                const targetCodigo = codigos[i];
 
-            // Calcular posición
-            const initialPosition = calculateNodePosition(
-                sourceNode.position,
-                direccion === 'dependencias' ? 'up' : 'down',
-                i,
-                codigos.length
-            );
+                // Calcular posición
+                const initialPosition = calculateNodePosition(
+                    sourceNode.position,
+                    direccion === 'dependencias' ? 'up' : 'down',
+                    i,
+                    codigos.length
+                );
 
-            const position = findAvailablePosition(
-                nodes.map(n => n.position),
-                initialPosition
-            );
+                const position = findAvailablePosition(
+                    nodes.map(n => n.position),
+                    initialPosition
+                );
 
-            await agregarConcepto(targetCodigo, position);
+                await agregarConcepto(targetCodigo, position);
 
-            // Crear edge
-            const edgeId = direccion === 'dependencias'
-                ? `edge-${targetCodigo}-${codigo}`
-                : `edge-${codigo}-${targetCodigo}`;
+                // Crear edge
+                const edgeId = direccion === 'dependencias'
+                    ? `edge-${targetCodigo}-${codigo}`
+                    : `edge-${codigo}-${targetCodigo}`;
 
-            const newEdge: Edge = {
-                id: edgeId,
-                source: direccion === 'dependencias' ? `concept-${targetCodigo}` : `concept-${codigo}`,
-                target: direccion === 'dependencias' ? `concept-${codigo}` : `concept-${targetCodigo}`,
-                type: 'smoothstep',
-                animated: true,
-                style: { stroke: hashToColor(targetCodigo) },
-            };
+                const newEdge: Edge = {
+                    id: edgeId,
+                    source: direccion === 'dependencias' ? `concept-${targetCodigo}` : `concept-${codigo}`,
+                    target: direccion === 'dependencias' ? `concept-${codigo}` : `concept-${targetCodigo}`,
+                    type: 'smoothstep',
+                    animated: true,
+                    style: { stroke: hashToColor(targetCodigo) },
+                };
 
-            setEdges(prev => {
-                if (prev.find(e => e.id === edgeId)) return prev;
-                return [...prev, newEdge];
-            });
+                setEdges(prev => {
+                    if (prev.find(e => e.id === edgeId)) return prev;
+                    return [...prev, newEdge];
+                });
+            }
+        } finally {
+            setIsLoading(false);
         }
 
     }, [conceptosCargados, getNode, agregarConcepto, setEdges, nodes]);
@@ -201,84 +228,116 @@ const FlowCanvas: React.FC = () => {
     }, [expandirConcepto]);
 
     // Manejar click en una variable de la fórmula
-    const manejarClickVariable = useCallback(async (variable: Variable, sourceNodeId: string) => {
+    const manejarClickVariable = useCallback(async (variable: Variable, sourceNodeId: string, depSource: DependencySource) => {
         const sourceNode = getNode(sourceNodeId);
         if (!sourceNode) return;
 
-        if (variable.tipo === 'SINGLE_CONCEPT' && variable.conceptoReferenciado) {
-            // Para variables que referencian un solo concepto (CALC, INFO, etc.)
-            const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
-            const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
-            await agregarConcepto(variable.conceptoReferenciado, position);
-
-            // Crear edge desde el concepto referenciado hacia el concepto actual
-            const edgeId = `edge-${variable.conceptoReferenciado}-${sourceNode.data.concepto.codigo}`;
-            const newEdge: Edge = {
-                id: edgeId,
-                source: `concept-${variable.conceptoReferenciado}`,
-                target: sourceNodeId,
-                type: 'smoothstep',
-                animated: true,
-                style: { stroke: variable.color },
-            };
-
-            setEdges(prev => {
-                if (prev.find(e => e.id === edgeId)) return prev;
-                return [...prev, newEdge];
-            });
-
-        } else if (variable.tipo === 'RANGE' && variable.rangoInicio && variable.rangoFin) {
-            // Para variables de rango (SC, ST, etc.) - crear nodo de rango
-            try {
-                const rango: RangoConceptos = await conceptoApi.getRango(
-                    variable.rangoInicio,
-                    variable.rangoFin,
-                    variable.prefijo
-                );
-
-                const rangoNodeId = `range-${variable.nombre}`;
-
-                // Si ya existe el nodo de rango, solo hacer fitView
-                if (getNode(rangoNodeId)) {
-                    return;
-                }
-
+        setIsLoading(true);
+        try {
+            if (variable.tipo === 'SINGLE_CONCEPT' && variable.conceptoReferenciado) {
+                // Para variables que referencian un solo concepto (CALC, INFO, etc.)
                 const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
                 const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
+                await agregarConcepto(variable.conceptoReferenciado, position);
 
-                const rangoNode: Node = {
-                    id: rangoNodeId,
-                    type: 'range',
-                    position,
-                    data: {
-                        rango,
-                        onExpandConcepto: (codigo: string) => {
-                            onExpandConceptoFromRangeRef.current?.(codigo, rangoNodeId);
-                        },
-                    },
-                };
-
-                setNodes(prev => [...prev, rangoNode]);
-
-                // Crear edge desde el rango hacia el concepto actual
-                const edgeId = `edge-${rangoNodeId}-${sourceNode.data.concepto.codigo}`;
+                // Crear edge desde el concepto referenciado hacia el concepto actual
+                const edgeId = `edge-${variable.conceptoReferenciado}-${sourceNode.data.concepto.codigo}`;
                 const newEdge: Edge = {
                     id: edgeId,
-                    source: rangoNodeId,
+                    source: `concept-${variable.conceptoReferenciado}`,
                     target: sourceNodeId,
                     type: 'smoothstep',
                     animated: true,
-                    style: { stroke: variable.color },
+                    style: getEdgeStyle(depSource, variable.color),
+                    data: { depSource },
                 };
 
                 setEdges(prev => {
-                    if (prev.find(e => e.id === edgeId)) return prev;
+                    const existingEdge = prev.find(e => e.id === edgeId);
+                    if (existingEdge) {
+                        // Si ya existe y viene de otra fuente, actualizar a "ambas"
+                        if (existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
+                            return prev.map(e => e.id === edgeId ? {
+                                ...e,
+                                style: getEdgeStyle('ambas', variable.color),
+                                data: { depSource: 'ambas' },
+                            } : e);
+                        }
+                        return prev;
+                    }
                     return [...prev, newEdge];
                 });
 
-            } catch (error) {
-                console.error('Error cargando rango:', error);
+            } else if (variable.tipo === 'RANGE' && variable.rangoInicio && variable.rangoFin) {
+                // Para variables de rango (SC, ST, etc.) - crear nodo de rango
+                try {
+                    const rango: RangoConceptos = await conceptoApi.getRango(
+                        variable.rangoInicio,
+                        variable.rangoFin,
+                        variable.prefijo
+                    );
+
+                    const rangoNodeId = `range-${variable.nombre}`;
+
+                    // Si ya existe el nodo de rango, solo actualizar edge si viene de otra fuente
+                    if (getNode(rangoNodeId)) {
+                        const edgeId = `edge-${rangoNodeId}-${sourceNode.data.concepto.codigo}`;
+                        setEdges(prev => {
+                            const existingEdge = prev.find(e => e.id === edgeId);
+                            if (existingEdge && existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
+                                return prev.map(e => e.id === edgeId ? {
+                                    ...e,
+                                    style: getEdgeStyle('ambas', variable.color),
+                                    data: { depSource: 'ambas' },
+                                } : e);
+                            }
+                            return prev;
+                        });
+                        return;
+                    }
+
+                    const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
+                    const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
+
+                    const rangoNode: Node = {
+                        id: rangoNodeId,
+                        type: 'range',
+                        position,
+                        data: {
+                            rango,
+                            onExpandConcepto: (codigo: string) => {
+                                onExpandConceptoFromRangeRef.current?.(codigo, rangoNodeId);
+                            },
+                            liquidaciones,
+                            liquidacionCargada: liquidaciones.size > 0,
+                        },
+                    };
+
+                    setNodes(prev => [...prev, rangoNode]);
+
+                    // Crear edge desde el rango hacia el concepto actual
+                    const edgeId = `edge-${rangoNodeId}-${sourceNode.data.concepto.codigo}`;
+                    const newEdge: Edge = {
+                        id: edgeId,
+                        source: rangoNodeId,
+                        target: sourceNodeId,
+                        type: 'smoothstep',
+                        animated: true,
+                        style: getEdgeStyle(depSource, variable.color),
+                        data: { depSource },
+                    };
+
+                    setEdges(prev => {
+                        if (prev.find(e => e.id === edgeId)) return prev;
+                        return [...prev, newEdge];
+                    });
+
+                } catch (error) {
+                    console.error('Error cargando rango:', error);
+                }
             }
+        } finally {
+            setIsLoading(false);
         }
     }, [getNode, agregarConcepto, setEdges, setNodes, nodes]);
 
@@ -318,12 +377,13 @@ const FlowCanvas: React.FC = () => {
 
     // Cargar liquidaciones
     const cargarLiquidaciones = useCallback(async () => {
+        setIsLoading(true);
         try {
             const data = await liquidacionApi.getByPeriodo(filtrosLiq);
             const map = new Map(Object.entries(data));
             setLiquidaciones(map);
 
-            // Actualizar importes en conceptos ya cargados
+            // Actualizar importes en conceptos y rangos ya cargados
             setNodes(prev => prev.map(node => {
                 if (node.type === 'concept' && node.data.concepto) {
                     const liq = map.get(node.data.concepto.codigo);
@@ -340,10 +400,22 @@ const FlowCanvas: React.FC = () => {
                         },
                     };
                 }
+                if (node.type === 'range' && node.data.rango) {
+                    return {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            liquidaciones: map,
+                            liquidacionCargada: true,
+                        },
+                    };
+                }
                 return node;
             }));
         } catch (error) {
             console.error('Error cargando liquidaciones:', error);
+        } finally {
+            setIsLoading(false);
         }
     }, [filtrosLiq, setNodes]);
 
@@ -380,6 +452,7 @@ const FlowCanvas: React.FC = () => {
         const pantalla = pantallaStorage.getById(id);
         if (!pantalla) return;
 
+        setIsLoading(true);
         // Limpiar canvas actual
         setNodes([]);
         setEdges([]);
@@ -407,8 +480,8 @@ const FlowCanvas: React.FC = () => {
                     onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
                         expandirConceptoRef.current?.(codigo, direccion);
                     },
-                    onVariableClick: (variable: Variable) => {
-                        onVariableClickRef.current?.(variable, n.id);
+                    onVariableClick: (variable: Variable, depSource: DependencySource) => {
+                        onVariableClickRef.current?.(variable, n.id, depSource);
                     },
                 },
             }));
@@ -432,6 +505,8 @@ const FlowCanvas: React.FC = () => {
             setTimeout(() => fitView({ duration: 500 }), 200);
         } catch (error) {
             console.error('Error cargando pantalla:', error);
+        } finally {
+            setIsLoading(false);
         }
     }, [expandirConcepto, setNodes, setEdges, fitView]);
 
@@ -605,6 +680,11 @@ const FlowCanvas: React.FC = () => {
 
                 {/* Canvas */}
                 <div className="canvas-container">
+                    {/* Loading overlay */}
+                    <div className={`loading-overlay ${isLoading ? 'visible' : ''}`}>
+                        <div className="loading-spinner"></div>
+                    </div>
+
                     {nodes.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state-icon">📋</div>

@@ -1,12 +1,12 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import type { Concepto, Variable } from '../types';
-import { hashToBorderColor, formatCurrency } from '../utils';
+import type { Concepto, Variable, DependencySource } from '../types';
+import { formatCurrency } from '../utils';
 
 interface ConceptNodeData {
     concepto: Concepto;
     onExpand?: (codigo: string, direction: 'dependencias' | 'dependientes') => void;
-    onVariableClick?: (variable: Variable) => void;
+    onVariableClick?: (variable: Variable, source: DependencySource) => void;
 }
 
 /**
@@ -16,7 +16,7 @@ interface ConceptNodeData {
 const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
     const { concepto, onExpand, onVariableClick } = data;
 
-    const borderColor = useMemo(() => hashToBorderColor(concepto.codigo), [concepto.codigo]);
+    const borderColor = concepto.borderColor;
 
     const nodeClass = concepto.definitivo ? 'concept-node definitivo' : 'concept-node transitorio';
 
@@ -59,6 +59,7 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
                                 formula={concepto.formulaCompleta}
                                 variables={concepto.variables || []}
                                 onVariableClick={onVariableClick}
+                                source="formula"
                                 val1={concepto.val1}
                                 val2={concepto.val2}
                                 val3={concepto.val3}
@@ -71,6 +72,7 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
                                     formula={concepto.condicionFormula}
                                     variables={concepto.variablesCondicion || []}
                                     onVariableClick={onVariableClick}
+                                    source="condicion"
                                     val1={concepto.val1}
                                     val2={concepto.val2}
                                     val3={concepto.val3}
@@ -148,14 +150,15 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
 interface FormulaConVariablesProps {
     formula: string;
     variables: Variable[];
-    onVariableClick?: (variable: Variable) => void;
+    onVariableClick?: (variable: Variable, source: DependencySource) => void;
+    source: DependencySource;
     val1?: number | null;
     val2?: number | null;
     val3?: number | null;
 }
 
 const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({
-    formula, variables, onVariableClick, val1, val2, val3
+    formula, variables, onVariableClick, source, val1, val2, val3
 }) => {
     if (!variables || variables.length === 0) {
         return <>{formula}</>;
@@ -203,7 +206,7 @@ const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({
                 onClick={isClickeable ? (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    onVariableClick?.(variable);
+                    onVariableClick?.(variable, source);
                 } : undefined}
                 onMouseDown={isClickeable ? (e) => e.stopPropagation() : undefined}
             >

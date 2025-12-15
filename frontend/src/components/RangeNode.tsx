@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import type { RangoConceptos, Liquidacion } from '../types';
-import { hashToBorderColor, truncate, formatCurrency } from '../utils';
+import { truncate, formatCurrency } from '../utils';
 
 interface RangeNodeData {
     rango: RangoConceptos;
@@ -17,7 +17,7 @@ interface RangeNodeData {
 const RangeNode: React.FC<NodeProps<RangeNodeData>> = ({ data }) => {
     const { rango, onExpandConcepto, liquidaciones, liquidacionCargada } = data;
 
-    const borderColor = hashToBorderColor(rango.id);
+    const borderColor = rango.borderColor;
 
     // Calcular suma de importes si hay liquidación cargada
     let sumaImportes: number | null = null;
@@ -84,7 +84,7 @@ const RangeNode: React.FC<NodeProps<RangeNodeData>> = ({ data }) => {
                         onMouseDown={(e) => e.stopPropagation()}
                     >
                         <div className="range-node-item-expand">+</div>
-                        <span className="range-node-item-code" style={{ color: '#1e293b' }}>{concepto.codigo}</span>
+                        <span className="range-node-item-code">{concepto.codigo}</span>
                         <span className="range-node-item-desc">
                             {truncate(concepto.descripcion, 25)}
                         </span>
