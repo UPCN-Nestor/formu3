@@ -8,5 +8,5 @@
 
 * Parsear MESLIQ, MESCOBBAE (sólo para mostrar texto para humano).
 
-
+* Uniones entre bloques ("flechas") distintas si está en la fórmula o en la condición, o ambas.
 
