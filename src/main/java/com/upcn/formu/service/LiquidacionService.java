@@ -1,8 +1,8 @@
 package com.upcn.formu.service;
 
-import com.upcn.formu.domain.Liquidacion;
 import com.upcn.formu.dto.LiquidacionDTO;
 import com.upcn.formu.repository.LiquidacionRepository;
+import com.upcn.formu.repository.LiquidacionProjection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,12 +26,10 @@ public class LiquidacionService {
      * Nombres de tipos de liquidación.
      * MODIFICABLE: Ajustar según los tipos reales del sistema.
      */
-    private static final Map<Integer, String> TIPOS_LIQUIDACION = Map.of(
-            1, "Normal",
-            2, "SAC",
-            3, "BAE",
-            4, "Vacaciones",
-            5, "Otros");
+    private static final Map<String, String> TIPOS_LIQUIDACION = Map.of(
+            "0", "Mensual",
+            "4", "Vacaciones",
+            "7", "Aguinaldo");
 
     /**
      * Obtiene los importes de liquidación para un período.
@@ -44,7 +42,7 @@ public class LiquidacionService {
      * @return Mapa de código de concepto → importe
      */
     public Map<String, LiquidacionDTO> getLiquidacionesPorPeriodo(
-            Integer anio, Integer mes, Integer tipoLiquidacion, String legajo) {
+            Integer anio, Integer mes, String tipoLiquidacion, String legajo) {
 
         // Usar valores por defecto si no se proporcionan
         if (anio == null) {
@@ -53,14 +51,14 @@ public class LiquidacionService {
         if (mes == null) {
             mes = LocalDate.now().getMonthValue();
         }
-        if (tipoLiquidacion == null) {
-            tipoLiquidacion = 1; // Normal por defecto
+        if (tipoLiquidacion == null || tipoLiquidacion.isBlank()) {
+            tipoLiquidacion = "0"; // Normal por defecto
         }
 
         log.info("Cargando liquidaciones: año={}, mes={}, tipo={}, legajo={}",
                 anio, mes, tipoLiquidacion, legajo);
 
-        List<Liquidacion> liquidaciones = liquidacionRepository.findByPeriodo(
+        List<LiquidacionProjection> liquidaciones = liquidacionRepository.findByPeriodo(
                 anio, mes, tipoLiquidacion, legajo);
 
         // Si no hay legajo específico, agrupar por concepto y sumar
@@ -71,7 +69,7 @@ public class LiquidacionService {
         // Si hay legajo específico, retornar directamente
         return liquidaciones.stream()
                 .collect(Collectors.toMap(
-                        Liquidacion::getCodigoConcepto,
+                        LiquidacionProjection::getCodigoConcepto,
                         liq -> LiquidacionDTO.builder()
                                 .codigoConcepto(liq.getCodigoConcepto())
                                 .importeCalculado(liq.getImporteCalculado())
@@ -86,24 +84,24 @@ public class LiquidacionService {
     /**
      * Agrupa liquidaciones por concepto, sumando importes de todos los legajos.
      */
-    private Map<String, LiquidacionDTO> agruparPorConcepto(List<Liquidacion> liquidaciones) {
-        Map<String, List<Liquidacion>> porConcepto = liquidaciones.stream()
-                .collect(Collectors.groupingBy(Liquidacion::getCodigoConcepto));
+    private Map<String, LiquidacionDTO> agruparPorConcepto(List<LiquidacionProjection> liquidaciones) {
+        Map<String, List<LiquidacionProjection>> porConcepto = liquidaciones.stream()
+                .collect(Collectors.groupingBy(LiquidacionProjection::getCodigoConcepto));
 
         Map<String, LiquidacionDTO> resultado = new HashMap<>();
 
-        for (Map.Entry<String, List<Liquidacion>> entry : porConcepto.entrySet()) {
+        for (Map.Entry<String, List<LiquidacionProjection>> entry : porConcepto.entrySet()) {
             String concepto = entry.getKey();
-            List<Liquidacion> liqs = entry.getValue();
+            List<LiquidacionProjection> liqs = entry.getValue();
 
             double sumaCalculado = liqs.stream()
                     .filter(l -> l.getImporteCalculado() != null)
-                    .mapToDouble(Liquidacion::getImporteCalculado)
+                    .mapToDouble(LiquidacionProjection::getImporteCalculado)
                     .sum();
 
             double sumaInformado = liqs.stream()
                     .filter(l -> l.getValorInformado() != null)
-                    .mapToDouble(Liquidacion::getValorInformado)
+                    .mapToDouble(LiquidacionProjection::getValorInformado)
                     .sum();
 
             resultado.put(concepto, LiquidacionDTO.builder()
@@ -121,7 +119,7 @@ public class LiquidacionService {
      * Obtiene el importe de un concepto específico.
      */
     public Optional<LiquidacionDTO> getLiquidacionPorConcepto(
-            Integer anio, Integer mes, Integer tipoLiquidacion,
+            Integer anio, Integer mes, String tipoLiquidacion,
             String concepto, String legajo) {
 
         Map<String, LiquidacionDTO> liquidaciones = getLiquidacionesPorPeriodo(
@@ -133,12 +131,12 @@ public class LiquidacionService {
     /**
      * Obtiene los tipos de liquidación disponibles.
      */
-    public Map<Integer, String> getTiposLiquidacion() {
+    public Map<String, String> getTiposLiquidacion() {
         try {
-            List<Integer> tipos = liquidacionRepository.findTiposLiquidacion();
-            Map<Integer, String> resultado = new LinkedHashMap<>();
+            List<String> tipos = liquidacionRepository.findTiposLiquidacion();
+            Map<String, String> resultado = new LinkedHashMap<>();
 
-            for (Integer tipo : tipos) {
+            for (String tipo : tipos) {
                 resultado.put(tipo, TIPOS_LIQUIDACION.getOrDefault(tipo, "Tipo " + tipo));
             }
 

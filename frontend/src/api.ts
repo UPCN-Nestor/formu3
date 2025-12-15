@@ -104,7 +104,7 @@ export const liquidacionApi = {
         const params = new URLSearchParams();
         if (filtros.anio) params.append('anio', filtros.anio.toString());
         if (filtros.mes) params.append('mes', filtros.mes.toString());
-        if (filtros.tipo) params.append('tipo', filtros.tipo.toString());
+        if (filtros.tipo !== undefined && filtros.tipo !== null) params.append('tipo', filtros.tipo.toString());
         if (filtros.legajo) params.append('legajo', filtros.legajo);
 
         const response = await fetch(`${API_BASE}/liquidacion?${params}`);

@@ -1,11 +1,13 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import type { RangoConceptos } from '../types';
-import { hashToBorderColor, truncate } from '../utils';
+import type { RangoConceptos, Liquidacion } from '../types';
+import { hashToBorderColor, truncate, formatCurrency } from '../utils';
 
 interface RangeNodeData {
     rango: RangoConceptos;
     onExpandConcepto?: (codigo: string) => void;
+    liquidaciones?: Map<string, Liquidacion>;
+    liquidacionCargada?: boolean;
 }
 
 /**
@@ -13,9 +15,21 @@ interface RangeNodeData {
  * Muestra lista de conceptos con botón para expandir cada uno.
  */
 const RangeNode: React.FC<NodeProps<RangeNodeData>> = ({ data }) => {
-    const { rango, onExpandConcepto } = data;
+    const { rango, onExpandConcepto, liquidaciones, liquidacionCargada } = data;
 
     const borderColor = hashToBorderColor(rango.id);
+
+    // Calcular suma de importes si hay liquidación cargada
+    let sumaImportes: number | null = null;
+    if (liquidacionCargada && liquidaciones) {
+        sumaImportes = 0;
+        rango.conceptos.forEach((concepto) => {
+            const liq = liquidaciones.get(concepto.codigo);
+            if (liq?.importeCalculado) {
+                sumaImportes! += liq.importeCalculado;
+            }
+        });
+    }
 
     const nodeStyle: React.CSSProperties = {
         '--node-bg-color': rango.color,
@@ -38,10 +52,26 @@ const RangeNode: React.FC<NodeProps<RangeNodeData>> = ({ data }) => {
                 <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>
                     {rango.descripcion}
                 </div>
+                {/* Suma de importes si hay liquidación cargada */}
+                {liquidacionCargada && sumaImportes !== null && (
+                    <div style={{
+                        marginTop: '6px',
+                        padding: '4px 8px',
+                        background: 'rgba(0,0,0,0.1)',
+                        borderRadius: '4px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600
+                    }}>
+                        Suma: <span style={{ color: '#15803d' }}>{formatCurrency(sumaImportes)}</span>
+                    </div>
+                )}
             </div>
 
             {/* Lista de conceptos */}
-            <div className="range-node-list nodrag">
+            <div
+                className="range-node-list nodrag nowheel"
+                onWheel={(e) => e.stopPropagation()}
+            >
                 {rango.conceptos.map((concepto) => (
                     <div
                         key={concepto.codigo}
@@ -54,7 +84,7 @@ const RangeNode: React.FC<NodeProps<RangeNodeData>> = ({ data }) => {
                         onMouseDown={(e) => e.stopPropagation()}
                     >
                         <div className="range-node-item-expand">+</div>
-                        <span className="range-node-item-code">{concepto.codigo}</span>
+                        <span className="range-node-item-code" style={{ color: '#1e293b' }}>{concepto.codigo}</span>
                         <span className="range-node-item-desc">
                             {truncate(concepto.descripcion, 25)}
                         </span>

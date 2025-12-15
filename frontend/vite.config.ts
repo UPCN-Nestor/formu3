@@ -12,6 +12,9 @@ export default defineConfig({
     server: {
         port: 5173,
         host: true, // Permite conexiones desde Docker
+        watch: {
+            usePolling: true,
+        },
         proxy: {
             '/api': {
                 target: process.env.VITE_API_URL || 'http://localhost:8080',

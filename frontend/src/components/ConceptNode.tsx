@@ -1,7 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import type { Concepto, Variable } from '../types';
-import { hashToBorderColor, formatCurrency, truncate } from '../utils';
+import { hashToBorderColor, formatCurrency } from '../utils';
 
 interface ConceptNodeData {
     concepto: Concepto;
@@ -37,39 +37,79 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
 
             {/* Header */}
             <div className="concept-node-header">
-                <span className="concept-node-code">{concepto.codigo}</span>
-                <span className="concept-node-badge">
-                    {concepto.definitivo ? 'DEF' : 'TRANS'}
+                <span className="concept-node-title" title={`${concepto.codigo} - ${concepto.descripcion}`}>
+                    {concepto.codigo} - {concepto.descripcion}
                 </span>
+                {concepto.tipoConceptoAbr && (
+                    <span className="concept-node-badge" style={{ flexShrink: 0 }}>
+                        {concepto.tipoConceptoAbr}
+                    </span>
+                )}
             </div>
 
             {/* Body */}
             <div className="concept-node-body">
-                {/* Descripción */}
-                <div className="concept-node-desc">
-                    {truncate(concepto.descripcion, 80)}
-                </div>
-
-                {/* Fórmula con variables coloreadas y clickeables */}
+                {/* Bloque de Orden, Fórmula y Condición */}
                 {concepto.formulaCompleta && (
                     <div className="concept-node-formula nodrag">
-                        <FormulaConVariables
-                            formula={concepto.formulaCompleta}
-                            variables={concepto.variables || []}
-                            onVariableClick={onVariableClick}
-                        />
+                        <div className="concept-node-orden">Orden: {concepto.orden}</div>
+                        <div className="concept-node-formula-row">
+                            <span className="concept-node-formula-label">Fórmula: </span>
+                            <FormulaConVariables
+                                formula={concepto.formulaCompleta}
+                                variables={concepto.variables || []}
+                                onVariableClick={onVariableClick}
+                                val1={concepto.val1}
+                                val2={concepto.val2}
+                                val3={concepto.val3}
+                            />
+                        </div>
+                        {concepto.condicionFormula && concepto.condicionFormula.trim() !== '' && (
+                            <div className="concept-node-formula-row concept-node-condicion-row">
+                                <span className="concept-node-formula-label">Condición: </span>
+                                <FormulaConVariables
+                                    formula={concepto.condicionFormula}
+                                    variables={concepto.variablesCondicion || []}
+                                    onVariableClick={onVariableClick}
+                                    val1={concepto.val1}
+                                    val2={concepto.val2}
+                                    val3={concepto.val3}
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* Importe de liquidación si existe */}
-                {concepto.importeLiquidacion !== undefined && concepto.importeLiquidacion !== null && (
-                    <div className="concept-node-importe">
-                        <div className="concept-node-importe-value">
-                            {formatCurrency(concepto.importeLiquidacion)}
+                {/* Observación (si existe) */}
+                {concepto.observacion && (
+                    <div className="concept-node-observacion">
+                        {concepto.observacion}
+                    </div>
+                )}
+
+                {/* Importe de liquidación - solo mostrar si hay liquidación cargada */}
+                {concepto.liquidacionCargada && (
+                    <div className="concept-node-importes">
+                        <div className="concept-node-importe">
+                            <div className="concept-node-importe-value concept-node-importe-calculado">
+                                {concepto.importeLiquidacion !== null && concepto.importeLiquidacion !== 0
+                                    ? formatCurrency(concepto.importeLiquidacion)
+                                    : '-'}
+                            </div>
+                            <div className="concept-node-importe-label">
+                                Calculado
+                            </div>
                         </div>
-                        <div className="concept-node-importe-label">
-                            Importe calculado
-                        </div>
+                        {concepto.valorInformado !== undefined && concepto.valorInformado !== null && concepto.valorInformado !== 0 && (
+                            <div className="concept-node-importe">
+                                <div className="concept-node-importe-value concept-node-importe-informado">
+                                    {concepto.valorInformado}
+                                </div>
+                                <div className="concept-node-importe-label">
+                                    Informado
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -109,9 +149,14 @@ interface FormulaConVariablesProps {
     formula: string;
     variables: Variable[];
     onVariableClick?: (variable: Variable) => void;
+    val1?: number | null;
+    val2?: number | null;
+    val3?: number | null;
 }
 
-const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({ formula, variables, onVariableClick }) => {
+const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({
+    formula, variables, onVariableClick, val1, val2, val3
+}) => {
     if (!variables || variables.length === 0) {
         return <>{formula}</>;
     }
@@ -132,8 +177,21 @@ const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({ formula, vari
             );
         }
 
-        // Determinar si la variable es clickeable
-        const isClickeable = variable.tipo === 'SINGLE_CONCEPT' || variable.tipo === 'RANGE';
+        // Determinar si la variable es clickeable (no si es "sí mismo" = 0000)
+        const esSiMismo = variable.conceptoReferenciado === '0000';
+        const isClickeable = !esSiMismo && (variable.tipo === 'SINGLE_CONCEPT' || variable.tipo === 'RANGE');
+
+        // Determinar si es una variable "sí mismo" y obtener su valor
+        let valorMostrar: string | null = null;
+        if (esSiMismo) {
+            if (variable.prefijo === 'VAL1' && val1 != null) {
+                valorMostrar = ` (${val1})`;
+            } else if (variable.prefijo === 'VAL2' && val2 != null) {
+                valorMostrar = ` (${val2})`;
+            } else if (variable.prefijo === 'VAL3' && val3 != null) {
+                valorMostrar = ` (${val3})`;
+            }
+        }
 
         // La variable coloreada y clickeable
         parts.push(
@@ -149,7 +207,7 @@ const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({ formula, vari
                 } : undefined}
                 onMouseDown={isClickeable ? (e) => e.stopPropagation() : undefined}
             >
-                {variable.textoMostrar}
+                {variable.textoMostrar}{valorMostrar}
             </span>
         );
 

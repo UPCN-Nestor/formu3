@@ -68,10 +68,20 @@ public class ConceptoService {
                     // Parsear variables de la fórmula
                     List<VariableDTO> variables = variableParser.parseFormula(concepto.getFormulaCompleta());
                     dto.setVariables(variables);
+                    
+                    // Parsear variables de la condición
+                    if (concepto.getCondicionFormula() != null && !concepto.getCondicionFormula().isBlank()) {
+                        List<VariableDTO> variablesCondicion = variableParser.parseFormula(concepto.getCondicionFormula());
+                        dto.setVariablesCondicion(variablesCondicion);
+                    }
 
                     // Extraer dependencias (conceptos que este concepto referencia)
                     Set<String> dependencias = variableParser
                             .extractConceptosReferenciados(concepto.getFormulaCompleta());
+                    // También incluir dependencias de la condición
+                    if (concepto.getCondicionFormula() != null) {
+                        dependencias.addAll(variableParser.extractConceptosReferenciados(concepto.getCondicionFormula()));
+                    }
                     dto.setDependencias(new ArrayList<>(dependencias));
 
                     // Obtener dependientes del caché (conceptos que referencian a este)
@@ -96,6 +106,7 @@ public class ConceptoService {
 
     /**
      * Obtiene los conceptos en un rango para variables tipo SC, ST, etc.
+     * SC filtra solo definitivos, ST filtra solo transitorios.
      * 
      * @param rangoId Identificador del rango (ej: "SC01003600")
      * @param inicio  Código de inicio del rango
@@ -105,7 +116,19 @@ public class ConceptoService {
     public RangoConceptosDTO getConceptosEnRango(String rangoId, String inicio, String fin) {
         List<ConceptoProjection> conceptos = conceptoRepository.findByCodigoRange(inicio, fin);
 
+        // Determinar tipo de rango (SC, ST, etc.)
+        String tipo = rangoId.replaceAll("\\d", "");
+        
+        // Filtrar conceptos según el tipo de rango
         List<ConceptoResumenDTO> resumen = conceptos.stream()
+                .filter(c -> {
+                    boolean esDefinitivo = "D".equalsIgnoreCase(c.getTransitorioDefinitivo());
+                    return switch (tipo) {
+                        case "SC" -> esDefinitivo;      // Solo definitivos
+                        case "ST" -> !esDefinitivo;     // Solo transitorios
+                        default -> true;                // Todos
+                    };
+                })
                 .map(c -> ConceptoResumenDTO.builder()
                         .codigo(c.getCodConcepto())
                         .descripcion(c.getDescripcionConcepto())
@@ -114,8 +137,6 @@ public class ConceptoService {
                         .build())
                 .collect(Collectors.toList());
 
-        // Determinar tipo de rango (SC, ST, etc.)
-        String tipo = rangoId.replaceAll("\\d", "");
         String descripcion = switch (tipo) {
             case "SC" -> "Suma de conceptos definitivos";
             case "ST" -> "Suma de conceptos transitorios";
@@ -148,9 +169,14 @@ public class ConceptoService {
                 .formulaCompleta(concepto.getFormulaCompleta())
                 .condicionFormula(concepto.getCondicionFormula())
                 .tipoConcepto(concepto.getTipoConcepto())
+                .tipoConceptoAbr(concepto.getTipoConceptoAbr())
+                .observacion(concepto.getObservacion())
                 .tiposLiquidacion(concepto.getTipoLiquidacion())
                 .orden(concepto.getOrden())
                 .definitivo(esDefinitivo)
+                .val1(concepto.getVal1())
+                .val2(concepto.getVal2())
+                .val3(concepto.getVal3())
                 .color(ColorUtils.hashToColor(concepto.getCodConcepto()))
                 .build();
     }

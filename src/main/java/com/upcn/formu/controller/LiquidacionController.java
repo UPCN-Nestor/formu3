@@ -35,7 +35,7 @@ public class LiquidacionController {
     public ResponseEntity<Map<String, LiquidacionDTO>> getLiquidaciones(
             @RequestParam(required = false) Integer anio,
             @RequestParam(required = false) Integer mes,
-            @RequestParam(required = false) Integer tipo,
+            @RequestParam(required = false) String tipo,
             @RequestParam(required = false) String legajo) {
 
         return ResponseEntity.ok(
@@ -51,7 +51,7 @@ public class LiquidacionController {
             @PathVariable String codigo,
             @RequestParam(required = false) Integer anio,
             @RequestParam(required = false) Integer mes,
-            @RequestParam(required = false) Integer tipo,
+            @RequestParam(required = false) String tipo,
             @RequestParam(required = false) String legajo) {
 
         return liquidacionService.getLiquidacionPorConcepto(anio, mes, tipo, codigo, legajo)
@@ -64,7 +64,7 @@ public class LiquidacionController {
      * GET /api/liquidacion/tipos
      */
     @GetMapping("/tipos")
-    public ResponseEntity<Map<Integer, String>> getTiposLiquidacion() {
+    public ResponseEntity<Map<String, String>> getTiposLiquidacion() {
         return ResponseEntity.ok(liquidacionService.getTiposLiquidacion());
     }
 

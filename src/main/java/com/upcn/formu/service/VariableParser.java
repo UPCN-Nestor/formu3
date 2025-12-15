@@ -55,7 +55,8 @@ public class VariableParser {
         singlePatterns.add(new PatronVariable(
                 "INFO",
                 Pattern.compile("^INFO(\\d{4})$"),
-                "Informado en {nnnn}"));
+                "Informado en {nnnn}",
+                "Informado en este concepto"));
         singlePatterns.add(new PatronVariable(
                 "REDO",
                 Pattern.compile("^REDO(\\d{4})$"),
@@ -63,35 +64,43 @@ public class VariableParser {
         singlePatterns.add(new PatronVariable(
                 "VAL1",
                 Pattern.compile("^VAL1(\\d{4})$"),
-                "Valor 1 de {nnnn}"));
+                "Valor 1 de {nnnn}",
+                "Valor 1 de este concepto"));
         singlePatterns.add(new PatronVariable(
                 "VAL2",
                 Pattern.compile("^VAL2(\\d{4})$"),
-                "Valor 2 de {nnnn}"));
+                "Valor 2 de {nnnn}",
+                "Valor 2 de este concepto"));
         singlePatterns.add(new PatronVariable(
                 "VAL3",
                 Pattern.compile("^VAL3(\\d{4})$"),
-                "Valor 3 de {nnnn}"));
+                "Valor 3 de {nnnn}",
+                "Valor 3 de este concepto"));
         singlePatterns.add(new PatronVariable(
                 "FVA1",
                 Pattern.compile("^FVA1(\\d{4})$"),
-                "Fijo Valor 1 de {nnnn}"));
+                "Valor fijo 1 del legajo, del concepto {nnnn}",
+                "Valor fijo 1 del legajo, de este concepto"));
         singlePatterns.add(new PatronVariable(
                 "FVA2",
                 Pattern.compile("^FVA2(\\d{4})$"),
-                "Fijo Valor 2 de {nnnn}"));
+                "Valor fijo 2 del legajo, del concepto {nnnn}",
+                "Valor fijo 2 del legajo, de este concepto"));
         singlePatterns.add(new PatronVariable(
                 "FVA3",
                 Pattern.compile("^FVA3(\\d{4})$"),
-                "Fijo Valor 3 de {nnnn}"));
+                "Valor fijo 3 del legajo, del concepto {nnnn}",
+                "Valor fijo 3 del legajo, de este concepto"));
         singlePatterns.add(new PatronVariable(
                 "BASI",
                 Pattern.compile("^BASI(\\d{4})$"),
-                "Básico de comp. salarial {nnnn}"));
+                "Básico de comp. salarial {nnnn}",
+                "Básico de su comp. salarial"));
         singlePatterns.add(new PatronVariable(
                 "ADIC",
                 Pattern.compile("^ADIC(\\d{4})$"),
-                "Adicional de comp. salarial {nnnn}"));
+                "Adicional de comp. salarial {nnnn}",
+                "Adicional de su comp. salarial"));
         singlePatterns.add(new PatronVariable(
                 "COMS",
                 Pattern.compile("^COMS(\\d{4})$"),
@@ -116,12 +125,12 @@ public class VariableParser {
         // Patrones con nnnn + otros parámetros (aún referencia concepto único)
         singlePatterns.add(new PatronVariable(
                 "CALU",
-                Pattern.compile("^CALU(\\d{4})[A-Z]$"),
-                "Último calculado de {nnnn}"));
+                Pattern.compile("^CALU(\\d{4})([A-Z0-9])$"),
+                "Valor de {nnnn} de última liq. tipo {l}"));
         singlePatterns.add(new PatronVariable(
                 "CALX",
-                Pattern.compile("^CALX(\\d{4})[A-Z]$"),
-                "Calculado última liq. de {nnnn}"));
+                Pattern.compile("^CALX(\\d{4})([A-Z0-9])$"),
+                "Valor de {nnnn} de última liq. tipo {l}"));
         singlePatterns.add(new PatronVariable(
                 "CSEM",
                 Pattern.compile("^CSEM(\\d{4})\\d[A-Z]$"),
@@ -136,12 +145,12 @@ public class VariableParser {
                 "Mayor en semestre de {nnnn}"));
         singlePatterns.add(new PatronVariable(
                 "CC",
-                Pattern.compile("^CC(\\d{4})\\d{2}\\d[A-Z]$"),
-                "Calc. {nnnn} meses ant."));
+                Pattern.compile("^CC(\\d{4})([A-Z0-9]{2})(\\d)(\\d)$"),
+                "Valor de {nnnn}, liq. {l} de {mm} meses atrás"));
         singlePatterns.add(new PatronVariable(
                 "CI",
-                Pattern.compile("^CI(\\d{4})\\d{2}\\d[A-Z]$"),
-                "Inf. {nnnn} meses ant."));
+                Pattern.compile("^CI(\\d{4})([A-Z0-9]{2})(\\d)(\\d)$"),
+                "Inf. de {nnnn}, liq. {l} de {mm} meses atrás"));
         singlePatterns.add(new PatronVariable(
                 "AC",
                 Pattern.compile("^AC(\\d{4})\\d{2}\\d[A-Z]$"),
@@ -372,7 +381,31 @@ public class VariableParser {
             Matcher m = patron.pattern.matcher(nombreVariable);
             if (m.matches()) {
                 String concepto = m.group(1);
-                String textoMostrar = patron.textoMostrar.replace("{nnnn}", concepto);
+                
+                // Determinar texto a mostrar
+                String textoMostrar;
+                boolean esSiMismo = "0000".equals(concepto);
+                
+                if (esSiMismo && patron.textoMostrarSiMismo != null) {
+                    textoMostrar = patron.textoMostrarSiMismo;
+                } else {
+                    textoMostrar = patron.textoMostrar.replace("{nnnn}", concepto);
+                }
+                
+                // Para patrones CC y CI, reemplazar también {mm} y {l}
+                if ((patron.prefijo.equals("CC") || patron.prefijo.equals("CI")) && m.groupCount() >= 4) {
+                    String meses = m.group(2);
+                    String tipoLiq = m.group(4);
+                    textoMostrar = textoMostrar
+                            .replace("{mm}", meses)
+                            .replace("{l}", tipoLiq);
+                }
+                
+                // Para patrones CALU y CALX, reemplazar {l} con el tipo de liquidación
+                if ((patron.prefijo.equals("CALU") || patron.prefijo.equals("CALX")) && m.groupCount() >= 2) {
+                    String tipoLiq = m.group(2);
+                    textoMostrar = textoMostrar.replace("{l}", tipoLiq);
+                }
 
                 return VariableDTO.builder()
                         .nombre(nombreVariable)
@@ -456,11 +489,17 @@ public class VariableParser {
         final String prefijo;
         final Pattern pattern;
         final String textoMostrar;
+        final String textoMostrarSiMismo; // Para cuando el código es 0000 (sí mismo)
 
         PatronVariable(String prefijo, Pattern pattern, String textoMostrar) {
+            this(prefijo, pattern, textoMostrar, null);
+        }
+        
+        PatronVariable(String prefijo, Pattern pattern, String textoMostrar, String textoMostrarSiMismo) {
             this.prefijo = prefijo;
             this.pattern = pattern;
             this.textoMostrar = textoMostrar;
+            this.textoMostrarSiMismo = textoMostrarSiMismo;
         }
     }
 }

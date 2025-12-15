@@ -17,7 +17,7 @@ import 'reactflow/dist/style.css';
 import ConceptNode from './components/ConceptNode';
 import RangeNode from './components/RangeNode';
 import { conceptoApi, liquidacionApi } from './api';
-import { pantallaStorage, generateId, calculateNodePosition, hashToColor } from './utils';
+import { pantallaStorage, generateId, calculateNodePosition, hashToColor, findAvailablePosition } from './utils';
 import type { Concepto, FiltrosLiquidacion, Liquidacion, PantallaGuardada, Variable, RangoConceptos } from './types';
 
 // Tipos de nodos personalizados
@@ -46,14 +46,16 @@ const FlowCanvas: React.FC = () => {
     // Referencia para manejar clicks en variables
     const onVariableClickRef = useRef<(variable: Variable, sourceNodeId: string) => void>();
 
+    // Referencia para manejar expansión de conceptos desde nodos de rango
+    const onExpandConceptoFromRangeRef = useRef<(codigo: string, rangoNodeId: string) => void>();
+
     // Estado de liquidación
     const [filtrosLiq, setFiltrosLiq] = useState<FiltrosLiquidacion>({
         anio: new Date().getFullYear(),
         mes: new Date().getMonth() + 1,
-        tipo: 1,
+        tipo: '0',
     });
     const [liquidaciones, setLiquidaciones] = useState<Map<string, Liquidacion>>(new Map());
-    const [tiposLiq, setTiposLiq] = useState<Record<number, string>>({});
 
     // Pantallas guardadas
     const [pantallasGuardadas, setPantallasGuardadas] = useState<PantallaGuardada[]>([]);
@@ -61,7 +63,6 @@ const FlowCanvas: React.FC = () => {
 
     // Cargar datos iniciales
     useEffect(() => {
-        liquidacionApi.getTipos().then(setTiposLiq).catch(console.error);
         setPantallasGuardadas(pantallaStorage.getAll());
     }, []);
 
@@ -82,7 +83,7 @@ const FlowCanvas: React.FC = () => {
         if (conceptosCargados.has(codigo)) {
             const node = getNode(`concept-${codigo}`);
             if (node) {
-                fitView({ nodes: [node], duration: 500 });
+                return;
             }
             return;
         }
@@ -91,20 +92,27 @@ const FlowCanvas: React.FC = () => {
             const concepto = await conceptoApi.getById(codigo);
 
             // Agregar importe si hay liquidaciones cargadas
-            const liq = liquidaciones.get(codigo);
-            if (liq) {
-                concepto.importeLiquidacion = liq.importeCalculado;
-                concepto.valorInformado = liq.valorInformado;
+            if (liquidaciones.size > 0) {
+                const liq = liquidaciones.get(codigo);
+                concepto.liquidacionCargada = true;
+                concepto.importeLiquidacion = liq?.importeCalculado ?? null;
+                concepto.valorInformado = liq?.valorInformado ?? null;
             }
 
             // Guardar en caché
             setConceptosCargados(prev => new Map(prev).set(codigo, concepto));
 
+            // Calcular posición: si no se proporciona, encontrar un espacio vacío
+            const finalPosition = position || findAvailablePosition(
+                nodes.map(n => n.position),
+                { x: 0, y: 0 }
+            );
+
             // Crear nodo
             const newNode: Node = {
                 id: `concept-${codigo}`,
                 type: 'concept',
-                position: position || { x: 0, y: 0 },
+                position: finalPosition,
                 data: {
                     concepto,
                     onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
@@ -124,13 +132,10 @@ const FlowCanvas: React.FC = () => {
                 setNombrePantalla(`Concepto ${codigo}`);
             }
 
-            // Ajustar vista
-            setTimeout(() => fitView({ duration: 500 }), 100);
-
         } catch (error) {
             console.error('Error cargando concepto:', error);
         }
-    }, [conceptosCargados, liquidaciones, conceptoRaiz, getNode, fitView, setNodes]);
+    }, [conceptosCargados, liquidaciones, conceptoRaiz, getNode, setNodes, nodes]);
 
     // Expandir dependencias o dependientes de un concepto
     const expandirConcepto = useCallback(async (
@@ -154,11 +159,16 @@ const FlowCanvas: React.FC = () => {
             const targetCodigo = codigos[i];
 
             // Calcular posición
-            const position = calculateNodePosition(
+            const initialPosition = calculateNodePosition(
                 sourceNode.position,
                 direccion === 'dependencias' ? 'up' : 'down',
                 i,
                 codigos.length
+            );
+
+            const position = findAvailablePosition(
+                nodes.map(n => n.position),
+                initialPosition
             );
 
             await agregarConcepto(targetCodigo, position);
@@ -183,8 +193,7 @@ const FlowCanvas: React.FC = () => {
             });
         }
 
-        setTimeout(() => fitView({ duration: 500 }), 200);
-    }, [conceptosCargados, getNode, agregarConcepto, setEdges, fitView]);
+    }, [conceptosCargados, getNode, agregarConcepto, setEdges, nodes]);
 
     // Actualizar la referencia cuando expandirConcepto cambia
     useEffect(() => {
@@ -198,7 +207,8 @@ const FlowCanvas: React.FC = () => {
 
         if (variable.tipo === 'SINGLE_CONCEPT' && variable.conceptoReferenciado) {
             // Para variables que referencian un solo concepto (CALC, INFO, etc.)
-            const position = calculateNodePosition(sourceNode.position, 'up', 0, 1);
+            const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
+            const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
             await agregarConcepto(variable.conceptoReferenciado, position);
 
             // Crear edge desde el concepto referenciado hacia el concepto actual
@@ -217,8 +227,6 @@ const FlowCanvas: React.FC = () => {
                 return [...prev, newEdge];
             });
 
-            setTimeout(() => fitView({ duration: 500 }), 200);
-
         } else if (variable.tipo === 'RANGE' && variable.rangoInicio && variable.rangoFin) {
             // Para variables de rango (SC, ST, etc.) - crear nodo de rango
             try {
@@ -232,11 +240,11 @@ const FlowCanvas: React.FC = () => {
 
                 // Si ya existe el nodo de rango, solo hacer fitView
                 if (getNode(rangoNodeId)) {
-                    fitView({ nodes: [{ id: rangoNodeId } as Node], duration: 500 });
                     return;
                 }
 
-                const position = calculateNodePosition(sourceNode.position, 'up', 0, 1);
+                const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
+                const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
 
                 const rangoNode: Node = {
                     id: rangoNodeId,
@@ -244,28 +252,8 @@ const FlowCanvas: React.FC = () => {
                     position,
                     data: {
                         rango,
-                        onExpandConcepto: async (codigo: string) => {
-                            const rangeNode = getNode(rangoNodeId);
-                            if (rangeNode) {
-                                const pos = calculateNodePosition(rangeNode.position, 'up', 0, 1);
-                                await agregarConcepto(codigo, pos);
-
-                                // Crear edge desde el concepto hacia el rango
-                                const edgeToRange = `edge-${codigo}-${rangoNodeId}`;
-                                setEdges(prev => {
-                                    if (prev.find(e => e.id === edgeToRange)) return prev;
-                                    return [...prev, {
-                                        id: edgeToRange,
-                                        source: `concept-${codigo}`,
-                                        target: rangoNodeId,
-                                        type: 'smoothstep',
-                                        animated: true,
-                                        style: { stroke: hashToColor(codigo) },
-                                    }];
-                                });
-
-                                setTimeout(() => fitView({ duration: 500 }), 200);
-                            }
+                        onExpandConcepto: (codigo: string) => {
+                            onExpandConceptoFromRangeRef.current?.(codigo, rangoNodeId);
                         },
                     },
                 };
@@ -288,18 +276,45 @@ const FlowCanvas: React.FC = () => {
                     return [...prev, newEdge];
                 });
 
-                setTimeout(() => fitView({ duration: 500 }), 200);
-
             } catch (error) {
                 console.error('Error cargando rango:', error);
             }
         }
-    }, [getNode, agregarConcepto, setEdges, setNodes, fitView]);
+    }, [getNode, agregarConcepto, setEdges, setNodes, nodes]);
 
     // Actualizar la referencia cuando manejarClickVariable cambia
     useEffect(() => {
         onVariableClickRef.current = manejarClickVariable;
     }, [manejarClickVariable]);
+
+    // Función para expandir concepto desde nodo de rango (usa nodes actuales)
+    const expandirConceptoDesdeRango = useCallback(async (codigo: string, rangoNodeId: string) => {
+        const rangeNode = getNode(rangoNodeId);
+        if (rangeNode) {
+            const initialPos = calculateNodePosition(rangeNode.position, 'up', 0, 1);
+            const pos = findAvailablePosition(nodes.map(n => n.position), initialPos);
+            await agregarConcepto(codigo, pos);
+
+            // Crear edge desde el concepto hacia el rango
+            const edgeToRange = `edge-${codigo}-${rangoNodeId}`;
+            setEdges(prev => {
+                if (prev.find(e => e.id === edgeToRange)) return prev;
+                return [...prev, {
+                    id: edgeToRange,
+                    source: `concept-${codigo}`,
+                    target: rangoNodeId,
+                    type: 'smoothstep',
+                    animated: true,
+                    style: { stroke: hashToColor(codigo) },
+                }];
+            });
+        }
+    }, [getNode, nodes, agregarConcepto, setEdges]);
+
+    // Actualizar la referencia cuando expandirConceptoDesdeRango cambia
+    useEffect(() => {
+        onExpandConceptoFromRangeRef.current = expandirConceptoDesdeRango;
+    }, [expandirConceptoDesdeRango]);
 
     // Cargar liquidaciones
     const cargarLiquidaciones = useCallback(async () => {
@@ -318,8 +333,9 @@ const FlowCanvas: React.FC = () => {
                             ...node.data,
                             concepto: {
                                 ...node.data.concepto,
-                                importeLiquidacion: liq?.importeCalculado,
-                                valorInformado: liq?.valorInformado,
+                                liquidacionCargada: true,
+                                importeLiquidacion: liq?.importeCalculado ?? null,
+                                valorInformado: liq?.valorInformado ?? null,
                             },
                         },
                     };
@@ -527,21 +543,20 @@ const FlowCanvas: React.FC = () => {
                                 <select
                                     className="select-control"
                                     value={filtrosLiq.tipo}
-                                    onChange={(e) => setFiltrosLiq(f => ({ ...f, tipo: parseInt(e.target.value) }))}
+                                    style={{ width: '100%' }}
+                                    onChange={(e) => setFiltrosLiq(f => ({ ...f, tipo: e.target.value }))}
                                 >
-                                    {Object.entries(tiposLiq).map(([k]) => (
-                                        <option key={k} value={k}>Tipo {k}</option>
+                                    {['0', '4', '7'].map((val) => (
+                                        <option key={val} value={val}>{val}</option>
                                     ))}
                                 </select>
                             </div>
-                        </div>
-                        <div className="form-row">
                             <div className="form-group">
-                                <label className="form-label">Legajo (opcional)</label>
+                                <label className="form-label">Legajo</label>
                                 <input
                                     type="text"
                                     className="search-input"
-                                    placeholder="Todos"
+                                    placeholder=""
                                     value={filtrosLiq.legajo || ''}
                                     onChange={(e) => setFiltrosLiq(f => ({ ...f, legajo: e.target.value || undefined }))}
                                 />

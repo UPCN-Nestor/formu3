@@ -115,4 +115,13 @@ public class ConceptoController {
     public ResponseEntity<Map<String, Object>> getCacheStats() {
         return ResponseEntity.ok(dependencyCacheService.getCacheStats());
     }
+
+    /**
+     * DEBUG: Muestra info de dependientes para un concepto.
+     * GET /api/conceptos/debug/{codigo}
+     */
+    @GetMapping("/debug/{codigo}")
+    public ResponseEntity<Map<String, Object>> debugConcepto(@PathVariable String codigo) {
+        return ResponseEntity.ok(dependencyCacheService.getDebugInfo(codigo));
+    }
 }

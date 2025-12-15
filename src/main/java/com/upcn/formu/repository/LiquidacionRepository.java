@@ -35,10 +35,10 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
                 AND (:legajo IS NULL OR LiqLeg = :legajo)
             ORDER BY Liq1Cnc
             """, nativeQuery = true)
-    List<Liquidacion> findByPeriodo(
+    List<LiquidacionProjection> findByPeriodo(
             @Param("anio") Integer anio,
             @Param("mes") Integer mes,
-            @Param("tipoLiq") Integer tipoLiq,
+            @Param("tipoLiq") String tipoLiq,
             @Param("legajo") String legajo);
 
     /**
@@ -53,7 +53,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
                 Liq1Cnc AS codigoConcepto,
                 Liq1Cal AS importeCalculado,
                 Liq1Inf AS valorInformado
-            FROM LIQUID1
+            FROM dbo.LIQUID1
             WHERE LiqAno = :anio
                 AND LiqMes = :mes
                 AND LiqTpoLiq = :tipoLiq
@@ -63,7 +63,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
     List<Liquidacion> findByPeriodoYConcepto(
             @Param("anio") Integer anio,
             @Param("mes") Integer mes,
-            @Param("tipoLiq") Integer tipoLiq,
+            @Param("tipoLiq") String tipoLiq,
             @Param("concepto") String concepto,
             @Param("legajo") String legajo);
 
@@ -71,7 +71,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
      * Obtiene los tipos de liquidación disponibles.
      */
     @Query(value = "SELECT DISTINCT LiqTpoLiq FROM LIQUID1 ORDER BY LiqTpoLiq", nativeQuery = true)
-    List<Integer> findTiposLiquidacion();
+    List<String> findTiposLiquidacion();
 
     /**
      * Obtiene los legajos disponibles para un período.
@@ -103,6 +103,6 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
     Object[] sumByConcepto(
             @Param("anio") Integer anio,
             @Param("mes") Integer mes,
-            @Param("tipoLiq") Integer tipoLiq,
+            @Param("tipoLiq") String tipoLiq,
             @Param("concepto") String concepto);
 }

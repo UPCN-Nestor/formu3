@@ -22,6 +22,8 @@ public class ConceptoDTO {
     private String formulaCompleta;
     private String condicionFormula;
     private String tipoConcepto;
+    private String tipoConceptoAbr;
+    private String observacion;
     private String tiposLiquidacion;
     private Integer orden;
     private boolean definitivo;
@@ -30,6 +32,11 @@ public class ConceptoDTO {
      * Variables extraídas de la fórmula
      */
     private List<VariableDTO> variables;
+    
+    /**
+     * Variables extraídas de la condición
+     */
+    private List<VariableDTO> variablesCondicion;
     
     /**
      * Conceptos de los cuales depende este concepto (referencias en la fórmula)
@@ -50,6 +57,13 @@ public class ConceptoDTO {
      * Valor informado de la liquidación (si se cargó una)
      */
     private Double valorInformado;
+    
+    /**
+     * Valores propios del concepto (para VAL10000, VAL20000, VAL30000)
+     */
+    private Double val1;
+    private Double val2;
+    private Double val3;
     
     /**
      * Color calculado basado en hash del código

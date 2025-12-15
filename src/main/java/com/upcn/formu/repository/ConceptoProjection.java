@@ -14,6 +14,11 @@ public interface ConceptoProjection {
     String getTransitorioDefinitivo();
     String getTipoLiquidacion();
     String getTipoConcepto();
+    String getTipoConceptoAbr();
+    String getObservacion();
     Integer getOrden();
     String getFormulaCompleta();
+    Double getVal1();
+    Double getVal2();
+    Double getVal3();
 }

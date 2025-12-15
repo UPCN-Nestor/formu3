@@ -1,0 +1,12 @@
+* Que SC/ST sumen los importes de sus conceptos y muestren el total en el nodo con subtítulo "Suma". Además el número de concepto tiene que estar en el mismo alineamiento y color que el nombre.
+
+* Mostrar una animación de loading sutil al cargar dependencias/dependientes, conceptos nuevos desde la búsqueda, o pantallas guardadas.
+
+* Cargar pantalla guardada no anda (pasarle el error de la consola).
+
+* Parsear variable CSEM.
+
+* Parsear MESLIQ, MESCOBBAE (sólo para mostrar texto para humano).
+
+
+

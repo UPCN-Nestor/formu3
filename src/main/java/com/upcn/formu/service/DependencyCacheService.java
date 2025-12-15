@@ -97,6 +97,24 @@ public class DependencyCacheService {
                     String rangoKey = "RANGE:" + rango[0] + "-" + rango[1];
                     nuevoCache.computeIfAbsent(rangoKey, k -> new HashSet<>())
                             .add(codigo);
+                    
+                    // También agregar como dependiente a cada concepto individual del rango
+                    // Usamos el mismo formato que los códigos del rango (con padding)
+                    try {
+                        int inicio = Integer.parseInt(rango[0]);
+                        int fin = Integer.parseInt(rango[1]);
+                        int digitCount = rango[0].length(); // Preservar el formato original
+                        String format = "%0" + digitCount + "d";
+                        
+                        for (int i = inicio; i <= fin; i++) {
+                            String conceptoEnRango = String.format(format, i);
+                            nuevoCache.computeIfAbsent(conceptoEnRango, k -> new HashSet<>())
+                                    .add(codigo);
+                        }
+                    } catch (NumberFormatException e) {
+                        log.warn("No se pudo expandir el rango {}-{} para concepto {}", 
+                                rango[0], rango[1], codigo);
+                    }
                 }
             }
 
@@ -116,23 +134,46 @@ public class DependencyCacheService {
 
     /**
      * Obtiene los conceptos que dependen del concepto indicado.
+     * Incluye tanto dependencias directas como los que lo usan a través de rangos.
      * 
      * @param codigo Código del concepto
      * @return Lista de códigos de conceptos dependientes
      */
-    @Cacheable(value = "dependientes", key = "#codigo")
     public List<String> getDependientes(String codigo) {
         if (!cacheReady) {
             log.warn("Caché no está listo, retornando lista vacía");
             return Collections.emptyList();
         }
 
-        Set<String> dependientes = dependientesCache.get(codigo);
-        if (dependientes == null) {
-            return Collections.emptyList();
+        Set<String> resultado = new HashSet<>();
+        
+        // Dependientes directos
+        Set<String> directos = dependientesCache.get(codigo);
+        if (directos != null) {
+            resultado.addAll(directos);
+        }
+        
+        // También buscar rangos que incluyen este concepto
+        try {
+            int codigoNum = Integer.parseInt(codigo);
+            for (Map.Entry<String, Set<String>> entry : dependientesCache.entrySet()) {
+                String key = entry.getKey();
+                if (key.startsWith("RANGE:")) {
+                    String[] parts = key.replace("RANGE:", "").split("-");
+                    if (parts.length == 2) {
+                        int ini = Integer.parseInt(parts[0]);
+                        int fin = Integer.parseInt(parts[1]);
+                        if (codigoNum >= ini && codigoNum <= fin) {
+                            resultado.addAll(entry.getValue());
+                        }
+                    }
+                }
+            }
+        } catch (NumberFormatException e) {
+            // Si el código no es numérico, solo usamos dependencias directas
         }
 
-        return new ArrayList<>(dependientes);
+        return new ArrayList<>(resultado);
     }
 
     /**
@@ -191,5 +232,49 @@ public class DependencyCacheService {
         dependientesCache.clear();
         cacheReady = false;
         log.info("Caché de dependencias limpiado");
+    }
+
+    /**
+     * DEBUG: Obtiene información detallada de un concepto.
+     */
+    public Map<String, Object> getDebugInfo(String codigo) {
+        Map<String, Object> info = new HashMap<>();
+        info.put("codigoBuscado", codigo);
+        info.put("cacheReady", cacheReady);
+        info.put("totalEntries", dependientesCache.size());
+        
+        // Dependientes directos
+        Set<String> deps = dependientesCache.get(codigo);
+        info.put("dependientesDirectos", deps != null ? deps.size() : 0);
+        info.put("dependientesList", deps != null ? new ArrayList<>(deps) : Collections.emptyList());
+        
+        // Buscar rangos que incluyen este concepto
+        List<String> rangosQueLoIncluyen = dependientesCache.keySet().stream()
+                .filter(k -> k.startsWith("RANGE:"))
+                .filter(k -> {
+                    String[] parts = k.replace("RANGE:", "").split("-");
+                    if (parts.length == 2) {
+                        try {
+                            int ini = Integer.parseInt(parts[0]);
+                            int fin = Integer.parseInt(parts[1]);
+                            int cod = Integer.parseInt(codigo);
+                            return cod >= ini && cod <= fin;
+                        } catch (NumberFormatException e) {
+                            return false;
+                        }
+                    }
+                    return false;
+                })
+                .toList();
+        info.put("rangosQueLoIncluyen", rangosQueLoIncluyen);
+        
+        // Mostrar algunas keys del caché como ejemplo
+        List<String> sampleKeys = dependientesCache.keySet().stream()
+                .filter(k -> !k.startsWith("RANGE:"))
+                .limit(10)
+                .toList();
+        info.put("sampleConceptKeys", sampleKeys);
+        
+        return info;
     }
 }

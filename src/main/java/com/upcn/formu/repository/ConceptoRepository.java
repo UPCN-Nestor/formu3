@@ -30,8 +30,13 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
                 MIN(TransitorioDefinitivo) AS TransitorioDefinitivo,
                 STRING_AGG(TipoLiquidacion, '-') AS TipoLiquidacion,
                 MIN(TipoConcepto) AS TipoConcepto,
+                MIN(TipoConceptoAbr) AS TipoConceptoAbr,
+                MIN(Observacion) AS Observacion,
                 MIN(Orden) AS Orden,
-                MIN(FormulaCompleta) AS FormulaCompleta
+                MIN(FormulaCompleta) AS FormulaCompleta,
+                MIN(Val1) AS Val1,
+                MIN(Val2) AS Val2,
+                MIN(Val3) AS Val3
             FROM ConceptoTipoLiqFormula
             GROUP BY CodConcepto, CodFormula
             ORDER BY CodConcepto
@@ -51,8 +56,13 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
                 MIN(TransitorioDefinitivo) AS TransitorioDefinitivo,
                 STRING_AGG(TipoLiquidacion, '-') AS TipoLiquidacion,
                 MIN(TipoConcepto) AS TipoConcepto,
+                MIN(TipoConceptoAbr) AS TipoConceptoAbr,
+                MIN(Observacion) AS Observacion,
                 MIN(Orden) AS Orden,
-                MIN(FormulaCompleta) AS FormulaCompleta
+                MIN(FormulaCompleta) AS FormulaCompleta,
+                MIN(Val1) AS Val1,
+                MIN(Val2) AS Val2,
+                MIN(Val3) AS Val3
             FROM ConceptoTipoLiqFormula
             WHERE CodConcepto = :codigo
             GROUP BY CodConcepto, CodFormula
@@ -73,8 +83,13 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
                 MIN(TransitorioDefinitivo) AS TransitorioDefinitivo,
                 STRING_AGG(TipoLiquidacion, '-') AS TipoLiquidacion,
                 MIN(TipoConcepto) AS TipoConcepto,
+                MIN(TipoConceptoAbr) AS TipoConceptoAbr,
+                MIN(Observacion) AS Observacion,
                 MIN(Orden) AS Orden,
-                MIN(FormulaCompleta) AS FormulaCompleta
+                MIN(FormulaCompleta) AS FormulaCompleta,
+                MIN(Val1) AS Val1,
+                MIN(Val2) AS Val2,
+                MIN(Val3) AS Val3
             FROM ConceptoTipoLiqFormula
             WHERE CodConcepto BETWEEN :codInicio AND :codFin
             GROUP BY CodConcepto, CodFormula

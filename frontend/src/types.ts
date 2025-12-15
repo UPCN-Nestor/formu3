@@ -30,14 +30,21 @@ export interface Concepto {
     formulaCompleta: string;
     condicionFormula?: string;
     tipoConcepto: string;
+    tipoConceptoAbr?: string;
+    observacion?: string;
     tiposLiquidacion: string;
     orden: number;
     definitivo: boolean;
     variables?: Variable[];
+    variablesCondicion?: Variable[];
     dependencias?: string[];
     dependientes?: string[];
-    importeLiquidacion?: number;
-    valorInformado?: number;
+    importeLiquidacion?: number | null;
+    valorInformado?: number | null;
+    liquidacionCargada?: boolean;
+    val1?: number | null;
+    val2?: number | null;
+    val3?: number | null;
     color: string;
 }
 
@@ -73,7 +80,7 @@ export interface Liquidacion {
 export interface FiltrosLiquidacion {
     anio: number;
     mes: number;
-    tipo: number;
+    tipo: string;
     legajo?: string;
 }
 

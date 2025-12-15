@@ -100,14 +100,52 @@ export function calculateNodePosition(
     index: number,
     total: number
 ): { x: number; y: number } {
-    const verticalOffset = direction === 'up' ? -180 : 180;
-    const horizontalSpacing = 280;
+    const verticalOffset = direction === 'up' ? -250 : 250;
+    const horizontalSpacing = 360;
     const startX = sourcePosition.x - ((total - 1) * horizontalSpacing) / 2;
 
     return {
         x: startX + index * horizontalSpacing,
         y: sourcePosition.y + verticalOffset,
     };
+}
+
+/**
+ * Encuentra una posición disponible evitando colisiones
+ */
+export function findAvailablePosition(
+    existingPositions: { x: number; y: number }[],
+    candidate: { x: number; y: number }
+): { x: number; y: number } {
+    let finalPos = { ...candidate };
+    const NODE_WIDTH = 340; // 320 + gap
+    const NODE_HEIGHT = 150; // Aprox height
+
+    let collision = true;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 50; // Evitar loop infinito
+
+    while (collision && attempts < MAX_ATTEMPTS) {
+        collision = false;
+        for (const pos of existingPositions) {
+            // Verificar solapamiento simple (bounding box)
+            if (
+                Math.abs(pos.x - finalPos.x) < NODE_WIDTH &&
+                Math.abs(pos.y - finalPos.y) < NODE_HEIGHT
+            ) {
+                collision = true;
+                break;
+            }
+        }
+
+        if (collision) {
+            // Si hay colisión, mover hacia la derecha
+            finalPos.x += NODE_WIDTH;
+            attempts++;
+        }
+    }
+
+    return finalPos;
 }
 
 /**

@@ -328,7 +328,7 @@ body {
 }
 
 .concept-node.definitivo {
-  border: 3px double var(--node-border-color, #475569);
+  border: 7px double var(--node-border-color, #475569);
 }
 
 .concept-node.transitorio {
@@ -348,6 +348,17 @@ body {
   font-size: 1rem;
   font-weight: 700;
   color: var(--node-text-color, #1e293b);
+}
+
+.concept-node-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--node-text-color, #1e293b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
 }
 
 .concept-node-badge {
@@ -379,24 +390,71 @@ body {
   color: var(--node-text-color, #1e293b);
 }
 
-.concept-node-importe {
+.concept-node-orden {
+  font-weight: 600;
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
+  color: var(--node-text-color, #1e293b);
+}
+
+.concept-node-formula-label {
+  font-weight: 600;
+}
+
+.concept-node-formula-row {
+  margin-top: 4px;
+}
+
+.concept-node-condicion-row {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.15);
+}
+
+.concept-node-importes {
+  display: flex;
+  gap: 8px;
   margin-top: 10px;
+}
+
+.concept-node-importe {
+  flex: 1;
   padding: 8px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: var(--border-radius-sm);
   text-align: center;
 }
 
 .concept-node-importe-value {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
-  color: var(--color-success);
+}
+
+.concept-node-importe-calculado {
+  color: #15803d;
+}
+
+.concept-node-importe-informado {
+  color: #1e40af;
 }
 
 .concept-node-importe-label {
   font-size: 0.65rem;
   color: var(--node-text-color, #1e293b);
   opacity: 0.8;
+}
+
+.concept-node-observacion {
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--node-text-color, #1e293b);
+  opacity: 0.9;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--border-radius-sm);
+  line-height: 1.4;
 }
 
 /* Variable dentro de fórmula */
@@ -426,7 +484,7 @@ body {
   min-width: 220px;
   max-width: 280px;
   background: var(--node-bg-color, #1e293b);
-  border: 2px dashed var(--node-border-color, #475569);
+  border: 2px solid var(--node-border-color, #475569);
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-md);
 }

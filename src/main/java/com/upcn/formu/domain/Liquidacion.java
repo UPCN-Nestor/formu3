@@ -34,7 +34,7 @@ public class Liquidacion {
 
     @Id
     @Column(name = "LiqTpoLiq")
-    private Integer tipoLiquidacion;
+    private String tipoLiquidacion;
 
     @Id
     @Column(name = "LiqLeg")
@@ -59,7 +59,7 @@ public class Liquidacion {
     public static class LiquidacionId implements Serializable {
         private Integer anio;
         private Integer mes;
-        private Integer tipoLiquidacion;
+        private String tipoLiquidacion;
         private String legajo;
         private String codigoConcepto;
     }
