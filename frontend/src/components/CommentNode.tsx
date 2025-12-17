@@ -65,7 +65,7 @@ const CommentNode: React.FC<NodeProps<CommentNodeData>> = ({ id, data }) => {
             />
 
             {/* Header con botón de eliminar */}
-            <div className="comment-node-header nodrag">
+            <div className="comment-node-header">
                 <div style={{ flex: 1 }}></div>
                 <button
                     className="concept-node-delete"
@@ -81,11 +81,11 @@ const CommentNode: React.FC<NodeProps<CommentNodeData>> = ({ id, data }) => {
             </div>
 
             {/* Contenido */}
-            <div className="comment-node-body nodrag">
+            <div className="comment-node-body">
                 {isEditing ? (
                     <textarea
                         ref={textareaRef}
-                        className="comment-node-textarea"
+                        className="comment-node-textarea nodrag"
                         value={localTexto}
                         onChange={(e) => setLocalTexto(e.target.value)}
                         onBlur={handleSave}
@@ -94,7 +94,7 @@ const CommentNode: React.FC<NodeProps<CommentNodeData>> = ({ id, data }) => {
                     />
                 ) : (
                     <div
-                        className="comment-node-text"
+                        className="comment-node-text nodrag"
                         onDoubleClick={() => setIsEditing(true)}
                         title="Doble click para editar"
                     >

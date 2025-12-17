@@ -12,6 +12,7 @@ import ReactFlow, {
     EdgeTypes,
     useReactFlow,
     ReactFlowProvider,
+    SelectionMode,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -126,6 +127,9 @@ const FlowCanvas: React.FC = () => {
     // Referencia para eliminar un concepto del canvas
     const onDeleteConceptoRef = useRef<(codigo: string) => void>();
 
+    // Referencia para eliminar un rango del canvas
+    const eliminarRangoRef = useRef<(rangoNodeId: string) => void>();
+
     // Estado de liquidación
     const [filtrosLiq, setFiltrosLiq] = useState<FiltrosLiquidacion>({
         anio: new Date().getFullYear(),
@@ -228,60 +232,287 @@ const FlowCanvas: React.FC = () => {
         const concepto = conceptosCargados.get(codigo);
         if (!concepto) return;
 
-        const codigos = direccion === 'dependencias'
-            ? concepto.dependencias || []
-            : concepto.dependientes || [];
-
-        if (codigos.length === 0) return;
-
         const sourceNode = getNode(`concept-${codigo}`);
         if (!sourceNode) return;
 
         setIsLoading(true);
         try {
-            // Cargar cada concepto y crear edges
-            for (let i = 0; i < codigos.length; i++) {
-                const targetCodigo = codigos[i];
-
-                // Calcular posición
-                const initialPosition = calculateNodePosition(
-                    sourceNode.position,
-                    direccion === 'dependencias' ? 'up' : 'down',
-                    i,
-                    codigos.length
+            if (direccion === 'dependencias') {
+                // Para dependencias, usar las variables para determinar el tipo de edge
+                // y también incluir rangos
+                // Separar variables por fuente para posicionamiento
+                const variablesFormula = (concepto.variables || []).filter(
+                    v => (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado && v.conceptoReferenciado !== '0000') ||
+                        v.tipo === 'RANGE'
+                );
+                const variablesCondicion = (concepto.variablesCondicion || []).filter(
+                    v => (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado && v.conceptoReferenciado !== '0000') ||
+                        v.tipo === 'RANGE'
                 );
 
-                const position = findAvailablePosition(
-                    nodes.map(n => n.position),
-                    initialPosition
-                );
+                // Crear un mapa para determinar el source de cada concepto
+                const conceptoSources = new Map<string, DependencySource>();
 
-                await agregarConcepto(targetCodigo, position);
+                variablesFormula.forEach(v => {
+                    if (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado) {
+                        conceptoSources.set(v.conceptoReferenciado, 'formula');
+                    }
+                });
 
-                // Crear edge
-                const edgeId = direccion === 'dependencias'
-                    ? `edge-${targetCodigo}-${codigo}`
-                    : `edge-${codigo}-${targetCodigo}`;
+                variablesCondicion.forEach(v => {
+                    if (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado) {
+                        const existing = conceptoSources.get(v.conceptoReferenciado);
+                        conceptoSources.set(v.conceptoReferenciado, existing ? 'ambas' : 'condicion');
+                    }
+                });
 
-                const newEdge: Edge = {
-                    id: edgeId,
-                    source: direccion === 'dependencias' ? `concept-${targetCodigo}` : `concept-${codigo}`,
-                    target: direccion === 'dependencias' ? `concept-${codigo}` : `concept-${targetCodigo}`,
-                    type: 'smoothstep',
-                    animated: true,
-                    style: { stroke: hashToColor(targetCodigo) },
+                // Separar conceptos por fuente para posicionamiento ordenado
+                const conceptosSoloFormula: { codigo: string; variable: Variable }[] = [];
+                const conceptosSoloCondicion: { codigo: string; variable: Variable }[] = [];
+                const conceptosAmbas: { codigo: string; variable: Variable }[] = [];
+                const processedConcepts = new Set<string>();
+
+                // Procesar variables de fórmula primero
+                for (const v of variablesFormula.filter(v => v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado)) {
+                    const cod = v.conceptoReferenciado!;
+                    if (processedConcepts.has(cod)) continue;
+                    processedConcepts.add(cod);
+                    const src = conceptoSources.get(cod);
+                    if (src === 'ambas') {
+                        conceptosAmbas.push({ codigo: cod, variable: v });
+                    } else {
+                        conceptosSoloFormula.push({ codigo: cod, variable: v });
+                    }
+                }
+
+                // Procesar variables de condición (solo las que no están en fórmula)
+                for (const v of variablesCondicion.filter(v => v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado)) {
+                    const cod = v.conceptoReferenciado!;
+                    if (processedConcepts.has(cod)) continue;
+                    processedConcepts.add(cod);
+                    conceptosSoloCondicion.push({ codigo: cod, variable: v });
+                }
+
+                // Separar rangos por fuente
+                const rangosSoloFormula: Variable[] = [];
+                const rangosSoloCondicion: Variable[] = [];
+                const rangosAmbas: Variable[] = [];
+                const processedRanges = new Set<string>();
+
+                for (const v of variablesFormula.filter(v => v.tipo === 'RANGE' && v.rangoInicio && v.rangoFin)) {
+                    const key = `${v.prefijo}-${v.rangoInicio}-${v.rangoFin}`;
+                    if (processedRanges.has(key)) continue;
+                    processedRanges.add(key);
+                    const enCondicion = variablesCondicion.some(vc => vc.nombre === v.nombre);
+                    if (enCondicion) {
+                        rangosAmbas.push(v);
+                    } else {
+                        rangosSoloFormula.push(v);
+                    }
+                }
+
+                for (const v of variablesCondicion.filter(v => v.tipo === 'RANGE' && v.rangoInicio && v.rangoFin)) {
+                    const key = `${v.prefijo}-${v.rangoInicio}-${v.rangoFin}`;
+                    if (processedRanges.has(key)) continue;
+                    processedRanges.add(key);
+                    rangosSoloCondicion.push(v);
+                }
+
+                // Calcular totales para posicionamiento
+                const totalFormula = conceptosSoloFormula.length + rangosSoloFormula.length;
+                const totalAmbas = conceptosAmbas.length + rangosAmbas.length;
+                const totalCondicion = conceptosSoloCondicion.length + rangosSoloCondicion.length;
+                const totalItems = totalFormula + totalAmbas + totalCondicion;
+
+                // Función auxiliar para crear nodo y edge de concepto
+                const crearNodoConcepto = async (targetCodigo: string, variable: Variable, depSource: DependencySource, posIdx: number) => {
+                    const initialPosition = calculateNodePosition(
+                        sourceNode.position,
+                        'up',
+                        posIdx,
+                        totalItems
+                    );
+
+                    const position = findAvailablePosition(
+                        nodes.map(n => n.position),
+                        initialPosition
+                    );
+
+                    await agregarConcepto(targetCodigo, position);
+
+                    const edgeId = `edge-${targetCodigo}-${codigo}`;
+                    const liqCargada = liquidaciones.size > 0;
+                    const liq = liquidaciones.get(targetCodigo);
+                    const tieneValor = !!(liq?.importeCalculado || liq?.valorInformado);
+                    const edgeConfig = getEdgeConfig(depSource, variable.color, liqCargada, tieneValor);
+
+                    const newEdge: Edge = {
+                        id: edgeId,
+                        source: `concept-${targetCodigo}`,
+                        target: `concept-${codigo}`,
+                        type: edgeConfig.type,
+                        animated: true,
+                        style: edgeConfig.style,
+                        data: { depSource, conceptoOrigen: targetCodigo },
+                    };
+
+                    setEdges(prev => {
+                        const existingEdge = prev.find(e => e.id === edgeId);
+                        if (existingEdge) {
+                            if (existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
+                                const ambasConfig = getEdgeConfig('ambas', variable.color, liqCargada, tieneValor);
+                                return prev.map(e => e.id === edgeId ? {
+                                    ...e,
+                                    type: ambasConfig.type,
+                                    style: ambasConfig.style,
+                                    data: { ...e.data, depSource: 'ambas' },
+                                } : e);
+                            }
+                            return prev;
+                        }
+                        return [...prev, newEdge];
+                    });
                 };
 
-                setEdges(prev => {
-                    if (prev.find(e => e.id === edgeId)) return prev;
-                    return [...prev, newEdge];
-                });
+                // Función auxiliar para crear nodo y edge de rango
+                const crearNodoRango = async (variable: Variable, depSource: DependencySource, posIdx: number) => {
+                    try {
+                        const rango = await conceptoApi.getRango(
+                            variable.rangoInicio!,
+                            variable.rangoFin!,
+                            variable.prefijo
+                        );
+
+                        const rangoNodeId = `range-${variable.nombre}`;
+
+                        if (!getNode(rangoNodeId)) {
+                            const initialPos = calculateNodePosition(sourceNode.position, 'up', posIdx, totalItems);
+                            const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
+
+                            const rangoNode: Node = {
+                                id: rangoNodeId,
+                                type: 'range',
+                                position,
+                                data: {
+                                    rango,
+                                    onExpandConcepto: (codigoRango: string) => {
+                                        onExpandConceptoFromRangeRef.current?.(codigoRango, rangoNodeId);
+                                    },
+                                    onDelete: (rangoId: string) => {
+                                        eliminarRangoRef.current?.(rangoId);
+                                    },
+                                    liquidaciones,
+                                    liquidacionCargada: liquidaciones.size > 0,
+                                },
+                            };
+
+                            setNodes(prev => [...prev, rangoNode]);
+                        }
+
+                        const edgeId = `edge-${rangoNodeId}-${codigo}`;
+                        const liqCargadaRango = liquidaciones.size > 0;
+                        const sumaRango = rango.conceptos.reduce((sum, c) => {
+                            const liq = liquidaciones.get(c.codigo);
+                            return sum + (liq?.importeCalculado || 0) + (liq?.valorInformado || 0);
+                        }, 0);
+                        const rangeEdgeConfig = getEdgeConfig(depSource, variable.color, liqCargadaRango, sumaRango > 0);
+
+                        const newEdge: Edge = {
+                            id: edgeId,
+                            source: rangoNodeId,
+                            target: `concept-${codigo}`,
+                            type: rangeEdgeConfig.type,
+                            animated: true,
+                            style: rangeEdgeConfig.style,
+                            data: { depSource, rangoId: rangoNodeId },
+                        };
+
+                        setEdges(prev => {
+                            if (prev.find(e => e.id === edgeId)) return prev;
+                            return [...prev, newEdge];
+                        });
+                    } catch (error) {
+                        console.error('Error cargando rango:', error);
+                    }
+                };
+
+                // Procesar en orden: Fórmula (izquierda) -> Ambas (centro) -> Condición (derecha)
+                let idx = 0;
+
+                // 1. Conceptos solo de fórmula
+                for (const { codigo: targetCodigo, variable } of conceptosSoloFormula) {
+                    await crearNodoConcepto(targetCodigo, variable, 'formula', idx++);
+                }
+
+                // 2. Rangos solo de fórmula
+                for (const variable of rangosSoloFormula) {
+                    await crearNodoRango(variable, 'formula', idx++);
+                }
+
+                // 3. Conceptos de ambas
+                for (const { codigo: targetCodigo, variable } of conceptosAmbas) {
+                    await crearNodoConcepto(targetCodigo, variable, 'ambas', idx++);
+                }
+
+                // 4. Rangos de ambas
+                for (const variable of rangosAmbas) {
+                    await crearNodoRango(variable, 'ambas', idx++);
+                }
+
+                // 5. Conceptos solo de condición
+                for (const { codigo: targetCodigo, variable } of conceptosSoloCondicion) {
+                    await crearNodoConcepto(targetCodigo, variable, 'condicion', idx++);
+                }
+
+                // 6. Rangos solo de condición
+                for (const variable of rangosSoloCondicion) {
+                    await crearNodoRango(variable, 'condicion', idx++);
+                }
+
+            } else {
+                // Para dependientes (hacia abajo), mantener lógica simple
+                const codigos = concepto.dependientes || [];
+                if (codigos.length === 0) return;
+
+                for (let i = 0; i < codigos.length; i++) {
+                    const targetCodigo = codigos[i];
+
+                    const initialPosition = calculateNodePosition(
+                        sourceNode.position,
+                        'down',
+                        i,
+                        codigos.length
+                    );
+
+                    const position = findAvailablePosition(
+                        nodes.map(n => n.position),
+                        initialPosition
+                    );
+
+                    await agregarConcepto(targetCodigo, position);
+
+                    const edgeId = `edge-${codigo}-${targetCodigo}`;
+
+                    const newEdge: Edge = {
+                        id: edgeId,
+                        source: `concept-${codigo}`,
+                        target: `concept-${targetCodigo}`,
+                        type: 'smoothstep',
+                        animated: true,
+                        style: { stroke: hashToColor(targetCodigo) },
+                    };
+
+                    setEdges(prev => {
+                        if (prev.find(e => e.id === edgeId)) return prev;
+                        return [...prev, newEdge];
+                    });
+                }
             }
         } finally {
             setIsLoading(false);
         }
 
-    }, [conceptosCargados, getNode, agregarConcepto, setEdges, nodes]);
+    }, [conceptosCargados, getNode, agregarConcepto, setEdges, nodes, liquidaciones, setNodes]);
 
     // Actualizar la referencia cuando expandirConcepto cambia
     useEffect(() => {
@@ -303,6 +534,11 @@ const FlowCanvas: React.FC = () => {
     const eliminarRango = useCallback((rangoNodeId: string) => {
         setNodes(prev => prev.filter(n => n.id !== rangoNodeId));
     }, [setNodes]);
+
+    // Actualizar la referencia cuando eliminarRango cambia
+    useEffect(() => {
+        eliminarRangoRef.current = eliminarRango;
+    }, [eliminarRango]);
 
     // Manejar click en una variable de la fórmula
     const manejarClickVariable = useCallback(async (variable: Variable, sourceNodeId: string, depSource: DependencySource) => {
@@ -1096,6 +1332,9 @@ const FlowCanvas: React.FC = () => {
                             minZoom={0.1}
                             maxZoom={2}
                             defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                            panOnDrag={[2]}
+                            selectionOnDrag={true}
+                            selectionMode={SelectionMode.Partial}
                         >
                             <Controls />
                             <MiniMap

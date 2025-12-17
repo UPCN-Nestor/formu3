@@ -1,5 +1,6 @@
 {
     "name": "Formu3 Dev Environment",
+    "initializeCommand": "docker context use default",
     "image": "mcr.microsoft.com/devcontainers/java:17-bookworm",
     "features": {
         "ghcr.io/devcontainers/features/node:1": {

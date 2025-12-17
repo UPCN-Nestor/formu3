@@ -66,7 +66,7 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
             <div className="concept-node-body">
                 {/* Bloque de Orden, Fórmula y Condición */}
                 {concepto.formulaCompleta && (
-                    <div className="concept-node-formula nodrag">
+                    <div className="concept-node-formula">
                         <div className="concept-node-orden">Orden: {concepto.orden}</div>
                         <div className="concept-node-formula-row">
                             <span className="concept-node-formula-label">Fórmula: </span>
@@ -130,23 +130,65 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
                     </div>
                 )}
 
-                {/* Botón de dependientes (hacia abajo) */}
-                <div className="nodrag" style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                    {concepto.dependientes && concepto.dependientes.length > 0 && (
-                        <button
-                            className="btn btn-sm btn-secondary"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                onExpand?.(concepto.codigo, 'dependientes');
-                            }}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            title={`Ver ${concepto.dependientes.length} conceptos que dependen de este`}
-                        >
-                            ↓ {concepto.dependientes.length}
-                        </button>
-                    )}
-                </div>
+                {/* Botones de dependencias (arriba) y dependientes (abajo) */}
+                {(() => {
+                    // Calcular variables clickeables únicas de fórmula y condición
+                    const variablesFormula = (concepto.variables || []).filter(
+                        v => (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado && v.conceptoReferenciado !== '0000') ||
+                            v.tipo === 'RANGE'
+                    );
+                    const variablesCondicion = (concepto.variablesCondicion || []).filter(
+                        v => (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado && v.conceptoReferenciado !== '0000') ||
+                            v.tipo === 'RANGE'
+                    );
+
+                    // Contar conceptos únicos
+                    const conceptosUnicos = new Set<string>();
+                    const rangosUnicos = new Set<string>();
+
+                    [...variablesFormula, ...variablesCondicion].forEach(v => {
+                        if (v.tipo === 'SINGLE_CONCEPT' && v.conceptoReferenciado) {
+                            conceptosUnicos.add(v.conceptoReferenciado);
+                        } else if (v.tipo === 'RANGE' && v.rangoInicio && v.rangoFin) {
+                            rangosUnicos.add(`${v.prefijo}-${v.rangoInicio}-${v.rangoFin}`);
+                        }
+                    });
+
+                    const totalDependencias = conceptosUnicos.size + rangosUnicos.size;
+
+                    return (
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                            {totalDependencias > 0 && (
+                                <button
+                                    className="btn btn-sm btn-secondary nodrag"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        onExpand?.(concepto.codigo, 'dependencias');
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    title={`Ver ${totalDependencias} dependencias (${conceptosUnicos.size} conceptos, ${rangosUnicos.size} rangos)`}
+                                >
+                                    ↑ {totalDependencias}
+                                </button>
+                            )}
+                            {concepto.dependientes && concepto.dependientes.length > 0 && (
+                                <button
+                                    className="btn btn-sm btn-secondary nodrag"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        onExpand?.(concepto.codigo, 'dependientes');
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    title={`Ver ${concepto.dependientes.length} conceptos que dependen de este`}
+                                >
+                                    ↓ {concepto.dependientes.length}
+                                </button>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* Handle inferior para dependientes (conceptos que dependen de este) */}
@@ -215,7 +257,7 @@ const FormulaConVariables: React.FC<FormulaConVariablesProps> = ({
         parts.push(
             <span
                 key={`var-${idx}`}
-                className={`formula-var ${isClickeable ? 'clickeable' : ''}`}
+                className={`formula-var ${isClickeable ? 'clickeable nodrag' : ''}`}
                 style={{ backgroundColor: variable.color }}
                 title={`${variable.textoMostrar}${variable.descripcionPatron ? ` - ${variable.descripcionPatron}` : ''}`}
                 onClick={isClickeable ? (e) => {

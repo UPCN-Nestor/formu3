@@ -309,6 +309,42 @@ body {
   border: 1px solid var(--color-bg-tertiary);
 }
 
+/* Rectángulo de selección mientras se arrastra */
+.react-flow__selection {
+  background: rgba(251, 191, 36, 0.1) !important;
+  border: 2px dashed #fbbf24 !important;
+  border-radius: 4px;
+}
+
+/* Ocultar el rectángulo que queda después de seleccionar */
+.react-flow__nodesselection-rect {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Resaltar nodos seleccionados */
+.react-flow__node.selected .concept-node,
+.react-flow__node.selected .range-node,
+.react-flow__node.selected .comment-node {
+  outline: 4px solid #fbbf24 !important;
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 6px rgba(251, 191, 36, 0.4),
+    0 0 20px rgba(251, 191, 36, 0.6),
+    0 12px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Animación suave al seleccionar */
+.react-flow__node .concept-node,
+.react-flow__node .range-node,
+.react-flow__node .comment-node {
+  transition:
+    outline var(--transition-fast),
+    outline-offset var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
 /* ============================================
    Nodo de concepto
    ============================================ */

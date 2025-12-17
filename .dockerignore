@@ -1,0 +1,41 @@
+# =============================================================================
+# .dockerignore para Formu3
+# Excluye archivos innecesarios del contexto de Docker
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.iml
+
+# Dev Container (NO afectar)
+.devcontainer
+
+# Build outputs locales
+target/
+frontend/node_modules/
+frontend/dist/
+
+# Logs
+*.log
+logs/
+
+# Temporales
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Documentación y scripts locales
+*.md
+*.txt
+*.ps1
+*.sh
+
+# Otros
+.env
+.env.local
