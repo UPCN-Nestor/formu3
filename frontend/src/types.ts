@@ -97,6 +97,8 @@ export interface PantallaGuardada {
     aristas: SavedEdge[];
     viewport: { x: number; y: number; zoom: number };
     filtrosLiquidacion?: FiltrosLiquidacion;
+    liquidacionCargada?: boolean;
+    liquidaciones?: Record<string, Liquidacion>;
 }
 
 /** Nodo guardado (simplificado para storage) */
@@ -106,6 +108,8 @@ export interface SavedNode {
     data: {
         codigo?: string;
         rangoId?: string;
+        rango?: RangoConceptos;
+        comentarioTexto?: string;
     };
     position: { x: number; y: number };
 }
@@ -116,6 +120,8 @@ export interface SavedEdge {
     source: string;
     target: string;
     type?: string;
+    style?: React.CSSProperties;
+    data?: Record<string, unknown>;
 }
 
 /** Source of a dependency (formula, condition, or both) */

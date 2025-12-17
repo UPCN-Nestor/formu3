@@ -33,13 +33,14 @@ export function hashToColor(input: string): string {
 }
 
 /**
- * Formatea un importe como moneda
+ * Formatea un importe como número (sin símbolo de moneda)
  */
 export function formatCurrency(value: number | undefined | null): string {
     if (value === undefined || value === null) return '-';
     return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: 'ARS',
+        style: 'decimal',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
     }).format(value);
 }
 
@@ -80,6 +81,14 @@ export function generateId(): string {
 }
 
 /**
+ * Constantes para el espaciado de nodos
+ */
+const NODE_HORIZONTAL_SPACING = 380; // Espaciado horizontal entre nodos
+const NODE_VERTICAL_SPACING = 330;   // Espaciado vertical entre nodos
+const NODE_WIDTH = 350;              // Ancho aproximado del nodo para detección de colisiones
+const NODE_HEIGHT = 280;             // Alto aproximado del nodo para detección de colisiones
+
+/**
  * Calcula la posición para un nuevo nodo basado en su origen
  */
 export function calculateNodePosition(
@@ -88,12 +97,11 @@ export function calculateNodePosition(
     index: number,
     total: number
 ): { x: number; y: number } {
-    const verticalOffset = direction === 'up' ? -250 : 250;
-    const horizontalSpacing = 360;
-    const startX = sourcePosition.x - ((total - 1) * horizontalSpacing) / 2;
+    const verticalOffset = direction === 'up' ? -NODE_VERTICAL_SPACING : NODE_VERTICAL_SPACING;
+    const startX = sourcePosition.x - ((total - 1) * NODE_HORIZONTAL_SPACING) / 2;
 
     return {
-        x: startX + index * horizontalSpacing,
+        x: startX + index * NODE_HORIZONTAL_SPACING,
         y: sourcePosition.y + verticalOffset,
     };
 }
@@ -106,8 +114,6 @@ export function findAvailablePosition(
     candidate: { x: number; y: number }
 ): { x: number; y: number } {
     let finalPos = { ...candidate };
-    const NODE_WIDTH = 340; // 320 + gap
-    const NODE_HEIGHT = 150; // Aprox height
 
     let collision = true;
     let attempts = 0;
@@ -127,8 +133,8 @@ export function findAvailablePosition(
         }
 
         if (collision) {
-            // Si hay colisión, mover hacia la derecha
-            finalPos.x += NODE_WIDTH;
+            // Si hay colisión, mover hacia la derecha usando el spacing
+            finalPos.x += NODE_HORIZONTAL_SPACING;
             attempts++;
         }
     }

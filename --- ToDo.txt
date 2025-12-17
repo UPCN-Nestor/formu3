@@ -1,16 +1,1 @@
-
-* Mostrar una animación de loading sutil al cargar dependencias/dependientes, conceptos nuevos desde la búsqueda, o pantallas guardadas.
-
-* Uniones entre bloques ("flechas") distintas si la dependencia está en la fórmula o en la condición, o ambas.
-
-
-
-* Cargar pantalla guardada no anda (pasarle el error de la consola).
-
-* Parsear variable CSEM.
-
-* Parsear MESLIQ, MESCOBBAE (sólo para mostrar texto para humano).
-
-* Agregar un pequeño tachito de basura a la derecha del badge de tipo de concepto (arriba a la derecha), para borrar el concepto ese. Dejar las dependencias y dependientes intactos.
-
-* Metele un poquito más de separación entre bloques, al agregar nuevos. Tanto vertical como horizontal.
+* En range, si se hace click a un concepto que ya está creado, centrar en él

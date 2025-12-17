@@ -133,12 +133,12 @@ public class VariableParser {
                 "Valor de {nnnn} de última liq. tipo {l}"));
         singlePatterns.add(new PatronVariable(
                 "CSEM",
-                Pattern.compile("^CSEM(\\d{4})\\d[A-Z]$"),
-                "Semestre de {nnnn}"));
+                Pattern.compile("^CSEM(\\d{4})(\\d)([A-Z0-9])$"),
+                "Suma {sem} de {nnnn}, tipo liq. {l}"));
         singlePatterns.add(new PatronVariable(
                 "CSEP",
-                Pattern.compile("^CSEP(\\d{4})\\d[A-Z]$"),
-                "Semestre prev. de {nnnn}"));
+                Pattern.compile("^CSEP(\\d{4})(\\d)([A-Z0-9])$"),
+                "Suma {sem} prev. de {nnnn}, tipo liq. {l}"));
         singlePatterns.add(new PatronVariable(
                 "MSEM",
                 Pattern.compile("^MSEM(\\d{4})\\d[A-Z]$"),
@@ -222,7 +222,7 @@ public class VariableParser {
                 "CTOCTO", "DIASGUAR", "DIASHABI", "DIASTRAB", "DIATRAMES",
                 "DIATRAMESE", "EDAD", "FERIANT", "FERITRAB", "FRENTE",
                 "GASTOSEDUC", "GENNETACU", "GRUPO", "GRUTRAB", "GUARDERIA",
-                "INASISTEN", "MESANTIG", "MESCOBBAE", "MESLIQ", "MESNACIM",
+                "INASISTEN", "MESANTIG", "MESNACIM",
                 "MODCONT", "OBRASOC", "PERTOPE", "PRESTAMO", "PROMEDIO",
                 "QUINCENA", "RDEDUC1", "RG5800", "RGCAFACO", "RGCAFACOFI",
                 "RGCAFAHI", "RGCAFAHIFI", "RGCAFAOT", "RGCAFAOTFI", "RGDEDINA",
@@ -241,6 +241,10 @@ public class VariableParser {
                     Pattern.compile("^" + Pattern.quote(terminal) + "$"),
                     terminal));
         }
+
+        // Variables terminales con descripciones específicas
+        terminalPatterns.add(new PatronVariable("MESLIQ", Pattern.compile("^MESLIQ$"), "Mes de liquidación"));
+        terminalPatterns.add(new PatronVariable("MESCOBBAE", Pattern.compile("^MESCOBBAE$"), "Mes de cobro de BAE"));
 
         // Patrones con parámetros pero sin concepto específico
         terminalPatterns.add(new PatronVariable("ANOTRA", Pattern.compile("^ANOTRA\\d{3}$"), "Años trabajados"));
@@ -405,6 +409,22 @@ public class VariableParser {
                 if ((patron.prefijo.equals("CALU") || patron.prefijo.equals("CALX")) && m.groupCount() >= 2) {
                     String tipoLiq = m.group(2);
                     textoMostrar = textoMostrar.replace("{l}", tipoLiq);
+                }
+                
+                // Para patrones CSEM y CSEP, reemplazar {sem} y {l}
+                if ((patron.prefijo.equals("CSEM") || patron.prefijo.equals("CSEP")) && m.groupCount() >= 3) {
+                    String semestre = m.group(2);
+                    String tipoLiq = m.group(3);
+                    String textoSemestre;
+                    switch (semestre) {
+                        case "0": textoSemestre = "anual"; break;
+                        case "1": textoSemestre = "de 1º semestre"; break;
+                        case "2": textoSemestre = "de 2º semestre"; break;
+                        default: textoSemestre = "de semestre " + semestre;
+                    }
+                    textoMostrar = textoMostrar
+                            .replace("{sem}", textoSemestre)
+                            .replace("{l}", tipoLiq);
                 }
 
                 return VariableDTO.builder()

@@ -7,6 +7,7 @@ interface ConceptNodeData {
     concepto: Concepto;
     onExpand?: (codigo: string, direction: 'dependencias' | 'dependientes') => void;
     onVariableClick?: (variable: Variable, source: DependencySource) => void;
+    onDelete?: (codigo: string) => void;
 }
 
 /**
@@ -14,7 +15,7 @@ interface ConceptNodeData {
  * Muestra código, descripción, fórmula con variables coloreadas e importe.
  */
 const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
-    const { concepto, onExpand, onVariableClick } = data;
+    const { concepto, onExpand, onVariableClick, onDelete } = data;
 
     const borderColor = concepto.borderColor;
 
@@ -40,11 +41,25 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
                 <span className="concept-node-title" title={`${concepto.codigo} - ${concepto.descripcion}`}>
                     {concepto.codigo} - {concepto.descripcion}
                 </span>
-                {concepto.tipoConceptoAbr && (
-                    <span className="concept-node-badge" style={{ flexShrink: 0 }}>
-                        {concepto.tipoConceptoAbr}
-                    </span>
-                )}
+                <div className="concept-node-header-actions nodrag">
+                    {concepto.tipoConceptoAbr && (
+                        <span className="concept-node-badge">
+                            {concepto.tipoConceptoAbr}
+                        </span>
+                    )}
+                    <button
+                        className="concept-node-delete"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onDelete?.(concepto.codigo);
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="Eliminar este concepto"
+                    >
+                        🗑️
+                    </button>
+                </div>
             </div>
 
             {/* Body */}

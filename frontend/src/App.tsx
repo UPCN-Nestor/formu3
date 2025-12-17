@@ -9,13 +9,17 @@ import ReactFlow, {
     useNodesState,
     useEdgesState,
     NodeTypes,
+    EdgeTypes,
     useReactFlow,
     ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
+import { customEdgeTypes } from './components/CustomEdges';
+
 import ConceptNode from './components/ConceptNode';
 import RangeNode from './components/RangeNode';
+import CommentNode from './components/CommentNode';
 import { conceptoApi, liquidacionApi } from './api';
 import { pantallaStorage, generateId, calculateNodePosition, hashToColor, findAvailablePosition } from './utils';
 import type { Concepto, FiltrosLiquidacion, Liquidacion, PantallaGuardada, Variable, RangoConceptos, DependencySource } from './types';
@@ -24,21 +28,72 @@ import type { Concepto, FiltrosLiquidacion, Liquidacion, PantallaGuardada, Varia
 const nodeTypes: NodeTypes = {
     concept: ConceptNode,
     range: RangeNode,
+    comment: CommentNode,
+};
+
+// Tipos de edges personalizados
+const edgeTypes: EdgeTypes = {
+    ...customEdgeTypes,
+};
+
+// Colores para edges según estado de liquidación
+const EDGE_COLOR_WITH_VALUE = '#16a34a';  // Verde - tiene valor
+const EDGE_COLOR_NO_VALUE = '#9ca3af';    // Gris - sin valor
+
+/**
+ * Determina el color del edge según el estado de liquidación
+ * @param defaultColor Color por defecto (basado en el concepto)
+ * @param liquidacionCargada Si hay una liquidación cargada
+ * @param tieneValor Si el concepto origen tiene valor calculado o informado
+ */
+const getEdgeColor = (
+    defaultColor: string,
+    liquidacionCargada: boolean,
+    tieneValor: boolean
+): string => {
+    if (!liquidacionCargada) {
+        return defaultColor;
+    }
+    return tieneValor ? EDGE_COLOR_WITH_VALUE : EDGE_COLOR_NO_VALUE;
 };
 
 /**
- * Obtiene el estilo del edge según el origen de la dependencia
+ * Obtiene la configuración del edge según el origen de la dependencia
+ * Retorna tanto el estilo como el tipo de edge a usar
+ * @param source Tipo de dependencia (formula, condicion, ambas)
+ * @param color Color base del edge
+ * @param liquidacionCargada Si hay liquidación cargada
+ * @param tieneValor Si el concepto origen tiene valor
  */
-const getEdgeStyle = (source: DependencySource, color: string): React.CSSProperties => {
+const getEdgeConfig = (
+    source: DependencySource,
+    color: string,
+    liquidacionCargada: boolean = false,
+    tieneValor: boolean = false
+): { style: React.CSSProperties; type: string } => {
+    const finalColor = getEdgeColor(color, liquidacionCargada, tieneValor);
+
     switch (source) {
         case 'formula':
-            return { stroke: color, strokeWidth: 2 };
+            return {
+                style: { stroke: finalColor, strokeWidth: 2.5 },
+                type: 'smoothstep'
+            };
         case 'condicion':
-            return { stroke: color, strokeWidth: 2, strokeDasharray: '5,5' };
+            return {
+                style: { stroke: finalColor, strokeWidth: 2.5 },
+                type: 'serpentine'
+            };
         case 'ambas':
-            return { stroke: color, strokeWidth: 4 };
+            return {
+                style: { stroke: finalColor, strokeWidth: 3.5 },
+                type: 'combined'
+            };
         default:
-            return { stroke: color };
+            return {
+                style: { stroke: finalColor, strokeWidth: 2.5 },
+                type: 'smoothstep'
+            };
     }
 };
 
@@ -48,7 +103,7 @@ const getEdgeStyle = (source: DependencySource, color: string): React.CSSPropert
 const FlowCanvas: React.FC = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const { fitView, getNode } = useReactFlow();
+    const { fitView, getNode, setCenter } = useReactFlow();
 
     // Estado de búsqueda y conceptos
     const [searchQuery, setSearchQuery] = useState('');
@@ -67,6 +122,9 @@ const FlowCanvas: React.FC = () => {
 
     // Referencia para manejar expansión de conceptos desde nodos de rango
     const onExpandConceptoFromRangeRef = useRef<(codigo: string, rangoNodeId: string) => void>();
+
+    // Referencia para eliminar un concepto del canvas
+    const onDeleteConceptoRef = useRef<(codigo: string) => void>();
 
     // Estado de liquidación
     const [filtrosLiq, setFiltrosLiq] = useState<FiltrosLiquidacion>({
@@ -140,6 +198,9 @@ const FlowCanvas: React.FC = () => {
                     },
                     onVariableClick: (variable: Variable, depSource: DependencySource) => {
                         onVariableClickRef.current?.(variable, `concept-${codigo}`, depSource);
+                    },
+                    onDelete: (codigo: string) => {
+                        onDeleteConceptoRef.current?.(codigo);
                     },
                 },
             };
@@ -227,6 +288,22 @@ const FlowCanvas: React.FC = () => {
         expandirConceptoRef.current = expandirConcepto;
     }, [expandirConcepto]);
 
+    // Eliminar un concepto del canvas (solo el nodo, no las dependencias)
+    const eliminarConcepto = useCallback((codigo: string) => {
+        const nodeId = `concept-${codigo}`;
+        setNodes(prev => prev.filter(n => n.id !== nodeId));
+    }, [setNodes]);
+
+    // Actualizar la referencia cuando eliminarConcepto cambia
+    useEffect(() => {
+        onDeleteConceptoRef.current = eliminarConcepto;
+    }, [eliminarConcepto]);
+
+    // Eliminar un rango del canvas
+    const eliminarRango = useCallback((rangoNodeId: string) => {
+        setNodes(prev => prev.filter(n => n.id !== rangoNodeId));
+    }, [setNodes]);
+
     // Manejar click en una variable de la fórmula
     const manejarClickVariable = useCallback(async (variable: Variable, sourceNodeId: string, depSource: DependencySource) => {
         const sourceNode = getNode(sourceNodeId);
@@ -235,21 +312,43 @@ const FlowCanvas: React.FC = () => {
         setIsLoading(true);
         try {
             if (variable.tipo === 'SINGLE_CONCEPT' && variable.conceptoReferenciado) {
-                // Para variables que referencian un solo concepto (CALC, INFO, etc.)
-                const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
-                const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
-                await agregarConcepto(variable.conceptoReferenciado, position);
+                const conceptNodeId = `concept-${variable.conceptoReferenciado}`;
+                const existingNode = getNode(conceptNodeId);
 
-                // Crear edge desde el concepto referenciado hacia el concepto actual
+                // Si el nodo ya existe, centrar la vista en él
+                if (existingNode) {
+                    // Centrar con animación suave
+                    const nodeWidth = 320; // Ancho aproximado del nodo
+                    const nodeHeight = 200; // Alto aproximado del nodo
+                    setCenter(
+                        existingNode.position.x + nodeWidth / 2,
+                        existingNode.position.y + nodeHeight / 2,
+                        { duration: 500, zoom: 1 }
+                    );
+                } else {
+                    // Para variables que referencian un solo concepto (CALC, INFO, etc.)
+                    const initialPos = calculateNodePosition(sourceNode.position, 'up', 0, 1);
+                    const position = findAvailablePosition(nodes.map(n => n.position), initialPos);
+                    await agregarConcepto(variable.conceptoReferenciado, position);
+                }
+
+                // Crear edge desde el concepto referenciado hacia el concepto actual (siempre)
                 const edgeId = `edge-${variable.conceptoReferenciado}-${sourceNode.data.concepto.codigo}`;
+
+                // Obtener información de liquidación del concepto referenciado (source del edge)
+                const liqCargada = liquidaciones.size > 0;
+                const liqConcepto = liquidaciones.get(variable.conceptoReferenciado);
+                const tieneValor = !!(liqConcepto?.importeCalculado || liqConcepto?.valorInformado);
+
+                const edgeConfig = getEdgeConfig(depSource, variable.color, liqCargada, tieneValor);
                 const newEdge: Edge = {
                     id: edgeId,
-                    source: `concept-${variable.conceptoReferenciado}`,
+                    source: conceptNodeId,
                     target: sourceNodeId,
-                    type: 'smoothstep',
+                    type: edgeConfig.type,
                     animated: true,
-                    style: getEdgeStyle(depSource, variable.color),
-                    data: { depSource },
+                    style: edgeConfig.style,
+                    data: { depSource, conceptoOrigen: variable.conceptoReferenciado },
                 };
 
                 setEdges(prev => {
@@ -257,10 +356,12 @@ const FlowCanvas: React.FC = () => {
                     if (existingEdge) {
                         // Si ya existe y viene de otra fuente, actualizar a "ambas"
                         if (existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
+                            const ambasConfig = getEdgeConfig('ambas', variable.color, liqCargada, tieneValor);
                             return prev.map(e => e.id === edgeId ? {
                                 ...e,
-                                style: getEdgeStyle('ambas', variable.color),
-                                data: { depSource: 'ambas' },
+                                type: ambasConfig.type,
+                                style: ambasConfig.style,
+                                data: { ...e.data, depSource: 'ambas' },
                             } : e);
                         }
                         return prev;
@@ -279,16 +380,29 @@ const FlowCanvas: React.FC = () => {
 
                     const rangoNodeId = `range-${variable.nombre}`;
 
-                    // Si ya existe el nodo de rango, solo actualizar edge si viene de otra fuente
+                    // Si ya existe el nodo de rango, centrar la vista y actualizar edge si viene de otra fuente
                     if (getNode(rangoNodeId)) {
+                        // Centrar la vista en el nodo de rango existente
+                        const existingRangeNode = getNode(rangoNodeId)!;
+                        const nodeWidth = 300;
+                        const nodeHeight = 150;
+                        setCenter(
+                            existingRangeNode.position.x + nodeWidth / 2,
+                            existingRangeNode.position.y + nodeHeight / 2,
+                            { duration: 500, zoom: 1 }
+                        );
+
                         const edgeId = `edge-${rangoNodeId}-${sourceNode.data.concepto.codigo}`;
                         setEdges(prev => {
                             const existingEdge = prev.find(e => e.id === edgeId);
                             if (existingEdge && existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
+                                // Para rangos, mantener el color por defecto (no tenemos un concepto específico)
+                                const ambasConfig = getEdgeConfig('ambas', variable.color, liquidaciones.size > 0, false);
                                 return prev.map(e => e.id === edgeId ? {
                                     ...e,
-                                    style: getEdgeStyle('ambas', variable.color),
-                                    data: { depSource: 'ambas' },
+                                    type: ambasConfig.type,
+                                    style: ambasConfig.style,
+                                    data: { ...e.data, depSource: 'ambas' },
                                 } : e);
                             }
                             return prev;
@@ -308,6 +422,9 @@ const FlowCanvas: React.FC = () => {
                             onExpandConcepto: (codigo: string) => {
                                 onExpandConceptoFromRangeRef.current?.(codigo, rangoNodeId);
                             },
+                            onDelete: (rangoId: string) => {
+                                eliminarRango(rangoId);
+                            },
                             liquidaciones,
                             liquidacionCargada: liquidaciones.size > 0,
                         },
@@ -317,14 +434,21 @@ const FlowCanvas: React.FC = () => {
 
                     // Crear edge desde el rango hacia el concepto actual
                     const edgeId = `edge-${rangoNodeId}-${sourceNode.data.concepto.codigo}`;
+                    // Para rangos, el color depende de si la suma de importes es > 0
+                    const liqCargadaRango = liquidaciones.size > 0;
+                    const sumaRango = rango.conceptos.reduce((sum, c) => {
+                        const liq = liquidaciones.get(c.codigo);
+                        return sum + (liq?.importeCalculado || 0) + (liq?.valorInformado || 0);
+                    }, 0);
+                    const rangeEdgeConfig = getEdgeConfig(depSource, variable.color, liqCargadaRango, sumaRango > 0);
                     const newEdge: Edge = {
                         id: edgeId,
                         source: rangoNodeId,
                         target: sourceNodeId,
-                        type: 'smoothstep',
+                        type: rangeEdgeConfig.type,
                         animated: true,
-                        style: getEdgeStyle(depSource, variable.color),
-                        data: { depSource },
+                        style: rangeEdgeConfig.style,
+                        data: { depSource, rangoId: rangoNodeId },
                     };
 
                     setEdges(prev => {
@@ -349,26 +473,49 @@ const FlowCanvas: React.FC = () => {
     // Función para expandir concepto desde nodo de rango (usa nodes actuales)
     const expandirConceptoDesdeRango = useCallback(async (codigo: string, rangoNodeId: string) => {
         const rangeNode = getNode(rangoNodeId);
-        if (rangeNode) {
+        if (!rangeNode) return;
+
+        const conceptNodeId = `concept-${codigo}`;
+        const existingNode = getNode(conceptNodeId);
+
+        // Si el concepto ya existe, centrar la vista en él
+        if (existingNode) {
+            const nodeWidth = 320;
+            const nodeHeight = 200;
+            setCenter(
+                existingNode.position.x + nodeWidth / 2,
+                existingNode.position.y + nodeHeight / 2,
+                { duration: 500, zoom: 1 }
+            );
+        } else {
+            // Si no existe, crear el nodo
             const initialPos = calculateNodePosition(rangeNode.position, 'up', 0, 1);
             const pos = findAvailablePosition(nodes.map(n => n.position), initialPos);
             await agregarConcepto(codigo, pos);
-
-            // Crear edge desde el concepto hacia el rango
-            const edgeToRange = `edge-${codigo}-${rangoNodeId}`;
-            setEdges(prev => {
-                if (prev.find(e => e.id === edgeToRange)) return prev;
-                return [...prev, {
-                    id: edgeToRange,
-                    source: `concept-${codigo}`,
-                    target: rangoNodeId,
-                    type: 'smoothstep',
-                    animated: true,
-                    style: { stroke: hashToColor(codigo) },
-                }];
-            });
         }
-    }, [getNode, nodes, agregarConcepto, setEdges]);
+
+        // Crear edge desde el concepto hacia el rango
+        const edgeToRange = `edge-${codigo}-${rangoNodeId}`;
+
+        // Obtener información de liquidación del concepto
+        const liqCargada = liquidaciones.size > 0;
+        const liq = liquidaciones.get(codigo);
+        const tieneValor = !!(liq?.importeCalculado || liq?.valorInformado);
+        const edgeConfig = getEdgeConfig('formula', hashToColor(codigo), liqCargada, tieneValor);
+
+        setEdges(prev => {
+            if (prev.find(e => e.id === edgeToRange)) return prev;
+            return [...prev, {
+                id: edgeToRange,
+                source: `concept-${codigo}`,
+                target: rangoNodeId,
+                type: edgeConfig.type,
+                animated: true,
+                style: edgeConfig.style,
+                data: { conceptoOrigen: codigo },
+            }];
+        });
+    }, [getNode, nodes, agregarConcepto, setEdges, liquidaciones, setCenter]);
 
     // Actualizar la referencia cuando expandirConceptoDesdeRango cambia
     useEffect(() => {
@@ -412,15 +559,74 @@ const FlowCanvas: React.FC = () => {
                 }
                 return node;
             }));
+
+            // Actualizar colores de edges según valores de liquidación
+            setEdges(prev => prev.map(edge => {
+                // Obtener el código del concepto origen del edge
+                let conceptoOrigen: string | undefined;
+
+                if (edge.source.startsWith('concept-')) {
+                    conceptoOrigen = edge.source.replace('concept-', '');
+                } else if (edge.data?.conceptoOrigen) {
+                    conceptoOrigen = edge.data.conceptoOrigen;
+                }
+
+                if (conceptoOrigen) {
+                    const liq = map.get(conceptoOrigen);
+                    const tieneValor = !!(liq?.importeCalculado || liq?.valorInformado);
+                    const depSource = edge.data?.depSource || 'formula';
+
+                    // Obtener el color original (lo recalculamos basado en el concepto)
+                    const colorOriginal = hashToColor(conceptoOrigen);
+                    const newConfig = getEdgeConfig(depSource, colorOriginal, true, tieneValor);
+
+                    return {
+                        ...edge,
+                        style: newConfig.style,
+                    };
+                }
+
+                // Para edges de rangos, calcular la suma de importes del rango
+                if (edge.source.startsWith('range-')) {
+                    // Buscar el nodo de rango correspondiente para obtener sus conceptos
+                    const rangeNodeId = edge.source;
+                    const rangeNode = nodes.find(n => n.id === rangeNodeId);
+
+                    let sumaRango = 0;
+                    if (rangeNode?.data?.rango?.conceptos) {
+                        sumaRango = rangeNode.data.rango.conceptos.reduce((sum: number, c: { codigo: string }) => {
+                            const liq = map.get(c.codigo);
+                            return sum + (liq?.importeCalculado || 0) + (liq?.valorInformado || 0);
+                        }, 0);
+                    }
+
+                    const depSource = edge.data?.depSource || 'formula';
+                    const colorOriginal = (edge.style as React.CSSProperties)?.stroke as string || '#666';
+                    const newConfig = getEdgeConfig(depSource, colorOriginal, true, sumaRango > 0);
+
+                    return {
+                        ...edge,
+                        style: newConfig.style,
+                    };
+                }
+
+                return edge;
+            }));
         } catch (error) {
             console.error('Error cargando liquidaciones:', error);
         } finally {
             setIsLoading(false);
         }
-    }, [filtrosLiq, setNodes]);
+    }, [filtrosLiq, setNodes, setEdges, nodes]);
 
     // Guardar pantalla
     const guardarPantalla = useCallback(() => {
+        // Convertir Map de liquidaciones a objeto para serialización
+        const liquidacionesObj: Record<string, Liquidacion> = {};
+        liquidaciones.forEach((liq, codigo) => {
+            liquidacionesObj[codigo] = liq;
+        });
+
         const pantalla: PantallaGuardada = {
             id: generateId(),
             nombre: nombrePantalla || `Concepto ${conceptoRaiz}`,
@@ -429,7 +635,12 @@ const FlowCanvas: React.FC = () => {
             nodos: nodes.map(n => ({
                 id: n.id,
                 type: n.type || 'concept',
-                data: { codigo: n.data?.concepto?.codigo, rangoId: n.data?.rango?.id },
+                data: {
+                    codigo: n.data?.concepto?.codigo,
+                    rangoId: n.data?.rango?.id,
+                    rango: n.data?.rango,
+                    comentarioTexto: n.type === 'comment' ? n.data?.texto : undefined,
+                },
                 position: n.position,
             })),
             aristas: edges.map(e => ({
@@ -437,15 +648,19 @@ const FlowCanvas: React.FC = () => {
                 source: e.source,
                 target: e.target,
                 type: e.type,
+                style: e.style,
+                data: e.data,
             })),
             viewport: { x: 0, y: 0, zoom: 1 },
             filtrosLiquidacion: filtrosLiq,
+            liquidacionCargada: liquidaciones.size > 0,
+            liquidaciones: liquidaciones.size > 0 ? liquidacionesObj : undefined,
         };
 
         pantallaStorage.save(pantalla);
         setPantallasGuardadas(pantallaStorage.getAll());
         alert('Pantalla guardada!');
-    }, [nombrePantalla, conceptoRaiz, nodes, edges, filtrosLiq]);
+    }, [nombrePantalla, conceptoRaiz, nodes, edges, filtrosLiq, liquidaciones]);
 
     // Cargar pantalla guardada
     const cargarPantalla = useCallback(async (id: string) => {
@@ -470,27 +685,103 @@ const FlowCanvas: React.FC = () => {
             conceptos.forEach(c => conceptosMap.set(c.codigo, c));
             setConceptosCargados(conceptosMap);
 
-            // Recrear nodos
-            const newNodes: Node[] = pantalla.nodos.map(n => ({
-                id: n.id,
-                type: n.type,
-                position: n.position,
-                data: {
-                    concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
-                    onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
-                        expandirConceptoRef.current?.(codigo, direccion);
-                    },
-                    onVariableClick: (variable: Variable, depSource: DependencySource) => {
-                        onVariableClickRef.current?.(variable, n.id, depSource);
-                    },
-                },
-            }));
+            // Restaurar liquidaciones como Map
+            const restoredLiquidaciones = new Map<string, Liquidacion>();
+            if (pantalla.liquidaciones) {
+                Object.entries(pantalla.liquidaciones).forEach(([codigo, liq]) => {
+                    restoredLiquidaciones.set(codigo, liq);
+                });
+            }
 
-            // Recrear edges
+            // Aplicar datos de liquidación a los conceptos
+            if (pantalla.liquidacionCargada) {
+                conceptosMap.forEach((concepto, codigo) => {
+                    const liq = restoredLiquidaciones.get(codigo);
+                    // Marcar como cargada para todos los conceptos (para mostrar "-" si no hay valor)
+                    concepto.liquidacionCargada = true;
+                    if (liq) {
+                        concepto.importeLiquidacion = liq.importeCalculado;
+                        concepto.valorInformado = liq.valorInformado;
+                    } else {
+                        concepto.importeLiquidacion = null;
+                        concepto.valorInformado = null;
+                    }
+                });
+            }
+
+            // Recrear nodos de concepto
+            const conceptNodes: Node[] = pantalla.nodos
+                .filter(n => n.type === 'concept')
+                .map(n => ({
+                    id: n.id,
+                    type: n.type,
+                    position: n.position,
+                    data: {
+                        concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
+                        onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
+                            expandirConceptoRef.current?.(codigo, direccion);
+                        },
+                        onVariableClick: (variable: Variable, depSource: DependencySource) => {
+                            onVariableClickRef.current?.(variable, n.id, depSource);
+                        },
+                        onDelete: (codigo: string) => {
+                            onDeleteConceptoRef.current?.(codigo);
+                        },
+                    },
+                }));
+
+            // Recrear nodos de rango con sus datos guardados
+            const rangeNodes: Node[] = pantalla.nodos
+                .filter(n => n.type === 'range' && n.data.rango)
+                .map(n => ({
+                    id: n.id,
+                    type: n.type,
+                    position: n.position,
+                    data: {
+                        rango: n.data.rango,
+                        onExpandConcepto: (codigo: string) => {
+                            onExpandConceptoFromRangeRef.current?.(codigo, n.id);
+                        },
+                        onDelete: (rangoId: string) => {
+                            eliminarRango(rangoId);
+                        },
+                        liquidaciones: restoredLiquidaciones,
+                        liquidacionCargada: pantalla.liquidacionCargada || false,
+                    },
+                }));
+
+            // Recrear nodos de comentario
+            const commentNodes: Node[] = pantalla.nodos
+                .filter(n => n.type === 'comment')
+                .map(n => ({
+                    id: n.id,
+                    type: n.type,
+                    position: n.position,
+                    data: {
+                        texto: n.data.comentarioTexto || '',
+                        onTextoChange: (nodeId: string, nuevoTexto: string) => {
+                            actualizarComentarioRef.current?.(nodeId, nuevoTexto);
+                        },
+                        onDelete: (nodeId: string) => {
+                            eliminarComentarioRef.current?.(nodeId);
+                        },
+                        onCreated: (nodeId: string) => {
+                            marcarComentarioCreadoRef.current?.(nodeId);
+                        },
+                    },
+                }));
+
+            const newNodes: Node[] = [...conceptNodes, ...rangeNodes, ...commentNodes];
+
+            // Recrear edges con sus estilos guardados
             const newEdges: Edge[] = pantalla.aristas.map(e => ({
-                ...e,
-                type: 'smoothstep',
+                id: e.id,
+                source: e.source,
+                target: e.target,
+                type: e.type || 'smoothstep',
                 animated: true,
+                style: e.style,
+                data: e.data,
             }));
 
             setNodes(newNodes);
@@ -498,8 +789,14 @@ const FlowCanvas: React.FC = () => {
             setConceptoRaiz(pantalla.conceptoRaiz);
             setNombrePantalla(pantalla.nombre);
 
+            // Restaurar filtros de liquidación
             if (pantalla.filtrosLiquidacion) {
                 setFiltrosLiq(pantalla.filtrosLiquidacion);
+            }
+
+            // Restaurar datos de liquidación al state global
+            if (restoredLiquidaciones.size > 0) {
+                setLiquidaciones(restoredLiquidaciones);
             }
 
             setTimeout(() => fitView({ duration: 500 }), 200);
@@ -508,7 +805,7 @@ const FlowCanvas: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [expandirConcepto, setNodes, setEdges, fitView]);
+    }, [expandirConcepto, setNodes, setEdges, fitView, eliminarRango, setLiquidaciones]);
 
     // Eliminar pantalla guardada
     const eliminarPantalla = useCallback((id: string) => {
@@ -526,6 +823,93 @@ const FlowCanvas: React.FC = () => {
         setConceptoRaiz('');
         setNombrePantalla('');
     }, [setNodes, setEdges]);
+
+    // Agregar comentario al canvas (sin modal, edición inline inmediata)
+    const agregarComentario = useCallback(() => {
+        const commentId = `comment-${generateId()}`;
+        const position = findAvailablePosition(
+            nodes.map(n => n.position),
+            { x: 100, y: 100 }
+        );
+
+        const newNode: Node = {
+            id: commentId,
+            type: 'comment',
+            position,
+            data: {
+                texto: '',
+                isNew: true,
+                onTextoChange: (nodeId: string, nuevoTexto: string) => {
+                    actualizarComentarioRef.current?.(nodeId, nuevoTexto);
+                },
+                onDelete: (nodeId: string) => {
+                    eliminarComentarioRef.current?.(nodeId);
+                },
+                onCreated: (nodeId: string) => {
+                    marcarComentarioCreadoRef.current?.(nodeId);
+                },
+            },
+        };
+
+        setNodes(prev => [...prev, newNode]);
+    }, [nodes, setNodes]);
+
+    // Actualizar texto de un comentario
+    const actualizarComentario = useCallback((nodeId: string, nuevoTexto: string) => {
+        setNodes(prev => prev.map(node => {
+            if (node.id === nodeId && node.type === 'comment') {
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        texto: nuevoTexto,
+                    },
+                };
+            }
+            return node;
+        }));
+    }, [setNodes]);
+
+    // Referencia para actualizar comentarios
+    const actualizarComentarioRef = useRef<(nodeId: string, nuevoTexto: string) => void>();
+    useEffect(() => {
+        actualizarComentarioRef.current = actualizarComentario;
+    }, [actualizarComentario]);
+
+    // Marcar comentario como ya creado (quitar flag isNew)
+    const marcarComentarioCreado = useCallback((nodeId: string) => {
+        setNodes(prev => prev.map(node => {
+            if (node.id === nodeId && node.type === 'comment') {
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        isNew: false,
+                    },
+                };
+            }
+            return node;
+        }));
+    }, [setNodes]);
+
+    // Referencia para marcar comentarios como creados
+    const marcarComentarioCreadoRef = useRef<(nodeId: string) => void>();
+    useEffect(() => {
+        marcarComentarioCreadoRef.current = marcarComentarioCreado;
+    }, [marcarComentarioCreado]);
+
+    // Eliminar comentario del canvas
+    const eliminarComentario = useCallback((nodeId: string) => {
+        setNodes(prev => prev.filter(n => n.id !== nodeId));
+        // También eliminar edges conectados a este comentario
+        setEdges(prev => prev.filter(e => e.source !== nodeId && e.target !== nodeId));
+    }, [setNodes, setEdges]);
+
+    // Referencia para eliminar comentarios
+    const eliminarComentarioRef = useRef<(nodeId: string) => void>();
+    useEffect(() => {
+        eliminarComentarioRef.current = eliminarComentario;
+    }, [eliminarComentario]);
 
     return (
         <div className="app-container">
@@ -546,6 +930,9 @@ const FlowCanvas: React.FC = () => {
                     </button>
                     <button className="btn btn-secondary" onClick={limpiarCanvas}>
                         🗑️ Limpiar
+                    </button>
+                    <button className="btn btn-comment" onClick={agregarComentario}>
+                        📝 Comentario
                     </button>
                 </div>
             </header>
@@ -569,9 +956,14 @@ const FlowCanvas: React.FC = () => {
                                     <li
                                         key={c.codigo}
                                         className="concepto-list-item"
-                                        onClick={() => {
-                                            agregarConcepto(c.codigo);
+                                        onClick={async () => {
+                                            await agregarConcepto(c.codigo);
                                             setSearchQuery('');
+                                            // Centrar la vista en el nuevo concepto
+                                            setTimeout(() => {
+                                                const nodeId = `concept-${c.codigo}`;
+                                                fitView({ nodes: [{ id: nodeId }], duration: 500, padding: 0.5 });
+                                            }, 100);
                                         }}
                                     >
                                         <div className="concepto-list-item-code">{c.codigo}</div>
@@ -618,7 +1010,6 @@ const FlowCanvas: React.FC = () => {
                                 <select
                                     className="select-control"
                                     value={filtrosLiq.tipo}
-                                    style={{ width: '100%' }}
                                     onChange={(e) => setFiltrosLiq(f => ({ ...f, tipo: e.target.value }))}
                                 >
                                     {['0', '4', '7'].map((val) => (
@@ -700,6 +1091,7 @@ const FlowCanvas: React.FC = () => {
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
                             nodeTypes={nodeTypes}
+                            edgeTypes={edgeTypes}
                             fitView
                             minZoom={0.1}
                             maxZoom={2}
@@ -715,6 +1107,7 @@ const FlowCanvas: React.FC = () => {
                     )}
                 </div>
             </div>
+
         </div>
     );
 };
