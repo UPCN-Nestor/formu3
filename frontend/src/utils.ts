@@ -83,10 +83,10 @@ export function generateId(): string {
 /**
  * Constantes para el espaciado de nodos
  */
-const NODE_HORIZONTAL_SPACING = 380; // Espaciado horizontal entre nodos
-const NODE_VERTICAL_SPACING = 380;   // Espaciado vertical entre nodos
-const NODE_WIDTH = 350;              // Ancho aproximado del nodo para detección de colisiones
-const NODE_HEIGHT = 350;             // Alto aproximado del nodo para detección de colisiones
+const NODE_HORIZONTAL_SPACING = 350; // Espaciado horizontal entre nodos
+const NODE_VERTICAL_SPACING = 350;   // Espaciado vertical entre nodos
+const NODE_WIDTH = 320;              // Ancho aproximado del nodo para detección de colisiones
+const NODE_HEIGHT = 320;             // Alto aproximado del nodo para detección de colisiones
 
 /**
  * Calcula la posición para un nuevo nodo basado en su origen
