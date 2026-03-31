@@ -41,6 +41,14 @@ const edgeTypes: EdgeTypes = {
     ...customEdgeTypes,
 };
 
+const buildLegajoLiquidacionMessage = (filtros: FiltrosLiquidacion): string | null => {
+    const legajo = filtros.legajo?.trim();
+    if (!legajo) return null;
+
+    const mesFormateado = String(filtros.mes).padStart(2, '0');
+    return `Mostrando importes de liquidación ${filtros.tipo} de ${mesFormateado}/${filtros.anio} de legajo ${legajo}`;
+};
+
 // Colores para edges según estado de liquidación
 const EDGE_COLOR_WITH_VALUE = '#16a34a';  // Verde - tiene valor
 const EDGE_COLOR_NO_VALUE = '#9ca3af';    // Gris - sin valor
@@ -141,6 +149,7 @@ const FlowCanvas: React.FC = () => {
         tipo: '0',
     });
     const [liquidaciones, setLiquidaciones] = useState<Map<string, Liquidacion>>(new Map());
+    const [filtrosLiqAplicados, setFiltrosLiqAplicados] = useState<FiltrosLiquidacion | null>(null);
 
     // Pantallas guardadas
     const [pantallasGuardadas, setPantallasGuardadas] = useState<PantallaGuardada[]>([]);
@@ -201,13 +210,14 @@ const FlowCanvas: React.FC = () => {
                 position: finalPosition,
                 data: {
                     concepto,
-                    onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
+                    onExpand: (_codigo: string, direccion: 'dependencias' | 'dependientes') => {
+                        // Usar siempre el codigo del nodeId para evitar diferencias 0173 vs 173.
                         expandirConceptoRef.current?.(codigo, direccion);
                     },
                     onVariableClick: (variable: Variable, depSource: DependencySource) => {
                         onVariableClickRef.current?.(variable, `concept-${codigo}`, depSource);
                     },
-                    onDelete: (codigo: string) => {
+                    onDelete: (_codigo: string) => {
                         onDeleteConceptoRef.current?.(codigo);
                     },
                 },
@@ -620,7 +630,7 @@ const FlowCanvas: React.FC = () => {
 
                     const rangoNodeId = `range-${variable.nombre}`;
 
-                    // Si ya existe el nodo de rango, centrar la vista y actualizar edge si viene de otra fuente
+                    // Si ya existe el nodo de rango, centrar la vista y crear/actualizar edge
                     if (getNode(rangoNodeId)) {
                         // Centrar la vista en el nodo de rango existente
                         const existingRangeNode = getNode(rangoNodeId)!;
@@ -635,17 +645,36 @@ const FlowCanvas: React.FC = () => {
                         const edgeId = `edge-${rangoNodeId}-${sourceNode.data.concepto.codigo}`;
                         setEdges(prev => {
                             const existingEdge = prev.find(e => e.id === edgeId);
-                            if (existingEdge && existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
-                                // Para rangos, mantener el color por defecto (no tenemos un concepto específico)
-                                const ambasConfig = getEdgeConfig('ambas', variable.color, liquidaciones.size > 0, false);
-                                return prev.map(e => e.id === edgeId ? {
-                                    ...e,
-                                    type: ambasConfig.type,
-                                    style: ambasConfig.style,
-                                    data: { ...e.data, depSource: 'ambas' },
-                                } : e);
+                            if (existingEdge) {
+                                if (existingEdge.data?.depSource && existingEdge.data.depSource !== depSource) {
+                                    const ambasConfig = getEdgeConfig('ambas', variable.color, liquidaciones.size > 0, false);
+                                    return prev.map(e => e.id === edgeId ? {
+                                        ...e,
+                                        type: ambasConfig.type,
+                                        style: ambasConfig.style,
+                                        data: { ...e.data, depSource: 'ambas' },
+                                    } : e);
+                                }
+                                return prev;
                             }
-                            return prev;
+
+                            // Si no existe edge, crearlo aunque el nodo de rango ya esté en canvas.
+                            const liqCargadaRango = liquidaciones.size > 0;
+                            const sumaRango = rango.conceptos.reduce((sum, c) => {
+                                const liq = liquidaciones.get(c.codigo);
+                                return sum + (liq?.importeCalculado || 0) + (liq?.valorInformado || 0);
+                            }, 0);
+                            const rangeEdgeConfig = getEdgeConfig(depSource, variable.color, liqCargadaRango, sumaRango > 0);
+
+                            return [...prev, {
+                                id: edgeId,
+                                source: rangoNodeId,
+                                target: sourceNodeId,
+                                type: rangeEdgeConfig.type,
+                                animated: true,
+                                style: rangeEdgeConfig.style,
+                                data: { depSource, rangoId: rangoNodeId },
+                            }];
                         });
                         return;
                     }
@@ -769,6 +798,10 @@ const FlowCanvas: React.FC = () => {
             const data = await liquidacionApi.getByPeriodo(filtrosLiq);
             const map = new Map(Object.entries(data));
             setLiquidaciones(map);
+            setFiltrosLiqAplicados({
+                ...filtrosLiq,
+                legajo: filtrosLiq.legajo?.trim() || undefined,
+            });
 
             // Actualizar importes en conceptos y rangos ya cargados
             setNodes(prev => prev.map(node => {
@@ -956,23 +989,26 @@ const FlowCanvas: React.FC = () => {
             // Recrear nodos de concepto
             const conceptNodes: Node[] = pantalla.nodos
                 .filter(n => n.type === 'concept')
-                .map(n => ({
-                    id: n.id,
-                    type: n.type,
-                    position: n.position,
-                    data: {
-                        concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
-                        onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
-                            expandirConceptoRef.current?.(codigo, direccion);
+                .map(n => {
+                    const codigoNodo = n.id.replace('concept-', '');
+                    return {
+                        id: n.id,
+                        type: n.type,
+                        position: n.position,
+                        data: {
+                            concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
+                            onExpand: (_codigo: string, direccion: 'dependencias' | 'dependientes') => {
+                                expandirConceptoRef.current?.(codigoNodo, direccion);
+                            },
+                            onVariableClick: (variable: Variable, depSource: DependencySource) => {
+                                onVariableClickRef.current?.(variable, n.id, depSource);
+                            },
+                            onDelete: (_codigo: string) => {
+                                onDeleteConceptoRef.current?.(codigoNodo);
+                            },
                         },
-                        onVariableClick: (variable: Variable, depSource: DependencySource) => {
-                            onVariableClickRef.current?.(variable, n.id, depSource);
-                        },
-                        onDelete: (codigo: string) => {
-                            onDeleteConceptoRef.current?.(codigo);
-                        },
-                    },
-                }));
+                    };
+                });
 
             // Recrear nodos de rango con sus datos guardados
             const rangeNodes: Node[] = pantalla.nodos
@@ -1042,6 +1078,14 @@ const FlowCanvas: React.FC = () => {
             if (restoredLiquidaciones.size > 0) {
                 setLiquidaciones(restoredLiquidaciones);
             }
+            if (pantalla.liquidacionCargada && pantalla.filtrosLiquidacion) {
+                setFiltrosLiqAplicados({
+                    ...pantalla.filtrosLiquidacion,
+                    legajo: pantalla.filtrosLiquidacion.legajo?.trim() || undefined,
+                });
+            } else {
+                setFiltrosLiqAplicados(null);
+            }
 
             setTimeout(() => fitView({ duration: 500 }), 200);
         } catch (error) {
@@ -1070,6 +1114,7 @@ const FlowCanvas: React.FC = () => {
         setConceptosCargados(new Map());
         setConceptoRaiz('');
         setNombrePantalla('');
+        setFiltrosLiqAplicados(null);
     }, [setNodes, setEdges]);
 
     // Agregar comentario al canvas (sin modal, edición inline inmediata)
@@ -1345,23 +1390,26 @@ const FlowCanvas: React.FC = () => {
                 // Recrear nodos de concepto
                 const conceptNodes: Node[] = estado.nodos
                     .filter((n: { type: string }) => n.type === 'concept')
-                    .map((n: { id: string; type: string; position: { x: number; y: number }; data: { codigo: string } }) => ({
-                        id: n.id,
-                        type: n.type,
-                        position: n.position,
-                        data: {
-                            concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
-                            onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
-                                expandirConceptoRef.current?.(codigo, direccion);
+                    .map((n: { id: string; type: string; position: { x: number; y: number }; data: { codigo: string } }) => {
+                        const codigoNodo = n.id.replace('concept-', '');
+                        return {
+                            id: n.id,
+                            type: n.type,
+                            position: n.position,
+                            data: {
+                                concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
+                                onExpand: (_codigo: string, direccion: 'dependencias' | 'dependientes') => {
+                                    expandirConceptoRef.current?.(codigoNodo, direccion);
+                                },
+                                onVariableClick: (variable: Variable, depSource: DependencySource) => {
+                                    onVariableClickRef.current?.(variable, n.id, depSource);
+                                },
+                                onDelete: (_codigo: string) => {
+                                    onDeleteConceptoRef.current?.(codigoNodo);
+                                },
                             },
-                            onVariableClick: (variable: Variable, depSource: DependencySource) => {
-                                onVariableClickRef.current?.(variable, n.id, depSource);
-                            },
-                            onDelete: (codigo: string) => {
-                                onDeleteConceptoRef.current?.(codigo);
-                            },
-                        },
-                    }));
+                        };
+                    });
 
                 // Recrear nodos de rango
                 const rangeNodes: Node[] = estado.nodos
@@ -1447,8 +1495,17 @@ const FlowCanvas: React.FC = () => {
         cargarEstadoDesdeURL();
     }, []); // Solo ejecutar al montar
 
+    const legajoLiquidacionMessage = filtrosLiqAplicados
+        ? buildLegajoLiquidacionMessage(filtrosLiqAplicados)
+        : null;
+
     return (
         <div className="app-container">
+            {legajoLiquidacionMessage && (
+                <div className="floating-legajo-alert">
+                    {legajoLiquidacionMessage}
+                </div>
+            )}
             {/* Header */}
             <header className="header">
                 <h1 className="header-title">📊 Visualizador de Fórmulas RRHH</h1>

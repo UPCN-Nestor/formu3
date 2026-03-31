@@ -61,6 +61,24 @@ body {
   width: 100vw;
 }
 
+.floating-legajo-alert {
+  position: fixed;
+  top: 76px;
+  right: 20px;
+  z-index: 250;
+  max-width: min(680px, calc(100vw - 360px));
+  padding: 10px 14px;
+  border-radius: var(--border-radius-md);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  box-shadow: var(--shadow-md);
+  color: #dbeafe;
+  font-size: 0.83rem;
+  font-weight: 500;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
 .header {
   display: flex;
   align-items: center;

@@ -16,7 +16,7 @@ import java.io.Serializable;
  * Mapeada a la tabla LIQUID1.
  */
 @Entity
-@Table(name = "LIQUID1")
+@Table(name = "LIQUID1", schema = "dbo")
 @IdClass(Liquidacion.LiquidacionId.class)
 @Data
 @NoArgsConstructor

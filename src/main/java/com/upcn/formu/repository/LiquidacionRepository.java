@@ -7,7 +7,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Repositorio para acceso a datos de liquidación.
@@ -28,7 +27,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
                 Liq1Cnc AS codigoConcepto,
                 Liq1Cal AS importeCalculado,
                 Liq1Inf AS valorInformado
-            FROM LIQUID1
+            FROM dbo.LIQUID1
             WHERE LiqAno = :anio
                 AND LiqMes = :mes
                 AND LiqTpoLiq = :tipoLiq
@@ -70,7 +69,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
     /**
      * Obtiene los tipos de liquidación disponibles.
      */
-    @Query(value = "SELECT DISTINCT LiqTpoLiq FROM LIQUID1 ORDER BY LiqTpoLiq", nativeQuery = true)
+    @Query(value = "SELECT DISTINCT LiqTpoLiq FROM dbo.LIQUID1 ORDER BY LiqTpoLiq", nativeQuery = true)
     List<String> findTiposLiquidacion();
 
     /**
@@ -78,7 +77,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
      */
     @Query(value = """
             SELECT DISTINCT LiqLeg
-            FROM LIQUID1
+            FROM dbo.LIQUID1
             WHERE LiqAno = :anio AND LiqMes = :mes
             ORDER BY LiqLeg
             """, nativeQuery = true)
@@ -94,7 +93,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Liquid
             SELECT
                 SUM(Liq1Cal) AS importeCalculado,
                 SUM(Liq1Inf) AS valorInformado
-            FROM LIQUID1
+            FROM dbo.LIQUID1
             WHERE LiqAno = :anio
                 AND LiqMes = :mes
                 AND LiqTpoLiq = :tipoLiq
