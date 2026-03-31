@@ -3,8 +3,7 @@
  */
 
 import type { PantallaGuardada } from './types';
-
-const STORAGE_KEY = 'formu-pantallas-guardadas';
+import { pantallaApi } from './api';
 
 /**
  * Genera un color HSL basado en hash (igual que el backend)
@@ -45,31 +44,44 @@ export function formatCurrency(value: number | undefined | null): string {
 }
 
 /**
- * Storage de pantallas guardadas
+ * Storage de pantallas guardadas (usa API del backend)
  */
 export const pantallaStorage = {
-    getAll(): PantallaGuardada[] {
+    async getAll(): Promise<PantallaGuardada[]> {
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            return stored ? JSON.parse(stored) : [];
-        } catch {
+            return await pantallaApi.getAll();
+        } catch (error) {
+            console.error('Error obteniendo pantallas:', error);
             return [];
         }
     },
 
-    save(pantalla: PantallaGuardada): void {
-        const pantallas = this.getAll().filter(p => p.id !== pantalla.id);
-        pantallas.unshift(pantalla);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(pantallas.slice(0, 20))); // Max 20 pantallas
+    async save(pantalla: PantallaGuardada): Promise<PantallaGuardada | null> {
+        try {
+            return await pantallaApi.save(pantalla);
+        } catch (error) {
+            console.error('Error guardando pantalla:', error);
+            return null;
+        }
     },
 
-    delete(id: string): void {
-        const pantallas = this.getAll().filter(p => p.id !== id);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(pantallas));
+    async delete(id: string): Promise<boolean> {
+        try {
+            await pantallaApi.delete(id);
+            return true;
+        } catch (error) {
+            console.error('Error eliminando pantalla:', error);
+            return false;
+        }
     },
 
-    getById(id: string): PantallaGuardada | undefined {
-        return this.getAll().find(p => p.id === id);
+    async getById(id: string): Promise<PantallaGuardada | null> {
+        try {
+            return await pantallaApi.getById(id);
+        } catch (error) {
+            console.error('Error obteniendo pantalla:', error);
+            return null;
+        }
     },
 };
 

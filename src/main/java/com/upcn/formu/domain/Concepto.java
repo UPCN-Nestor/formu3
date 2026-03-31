@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
  * NOTA: Esta entidad es de solo lectura ya que viene de una vista.
  */
 @Entity
-@Table(name = "ConceptoTipoLiqFormula")
+@Table(name = "ConceptoTipoLiqFormula", schema = "dbo", catalog = "UPCN_REPORTES")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

@@ -1123,3 +1123,39 @@ body {
   background: linear-gradient(135deg, #ffee58 0%, #fdd835 100%);
   box-shadow: 0 2px 8px rgba(201, 162, 39, 0.4);
 }
+
+/* Botón de exportar PNG en header */
+.btn-export {
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  color: white;
+  border: none;
+}
+
+.btn-export:hover {
+  background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.5);
+}
+
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-bg-tertiary);
+}
+
+/* Botón de copiar link en header */
+.btn-share {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  color: white;
+  border: none;
+}
+
+.btn-share:hover {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.5);
+}
+
+.btn-share:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-bg-tertiary);
+}

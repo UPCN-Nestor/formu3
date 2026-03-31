@@ -11,7 +11,8 @@ export default defineConfig({
     },
     server: {
         port: 5173,
-        host: true, // Permite conexiones desde Docker
+        host: '0.0.0.0', // Escucha en todas las interfaces
+        strictPort: true,
         watch: {
             usePolling: true,
         },

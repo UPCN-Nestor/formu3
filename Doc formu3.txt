@@ -23,37 +23,55 @@ También necesito la opción de cargar Año, Mes (default actuales), Tipo Liquid
 El sistema tiene que responder rápidamente, tanto en el aspecto gráfico como en cuanto a la carga de datos. Sugerir las tecnologías apropiadas para este requerimiento.
 
 La base de datos es SQL Server.
-    url: jdbc:sqlserver://192.168.0.227:1433;database=UPCN_RRHH_PRUE
+    url: jdbc:sqlserver://192.168.0.227:1433;database=UPCN_REPORTES
     username: consultas
     password: Csua2018
 	
 Contamos con estos recursos:
 
+-- Crear en UPCN_REPORTES:
 CREATE VIEW [dbo].[ConceptoTipoLiqFormula] AS
-SELECT DISTINCT C.ConCod CodConcepto, C.ConDsc DescripcionConcepto, 
-	C.ConTra TransitorioDefinitivo, 
-	TL.TpoLiqDsc TipoLiquidacion, 
-	C.ConOrd Orden, 
-	CASE 
-		WHEN C.ConTpoCnc = 1 THEN '1: Sujeto a Retención'
-		WHEN C.ConTpoCnc = 2 THEN '2: No Sujeto a Retención'
-		WHEN C.ConTpoCnc = 3 THEN '3: Salario Familiar'
-		WHEN C.ConTpoCnc = 4 THEN '4: Retenciones'
-		WHEN C.ConTpoCnc = 5 THEN '5: Deducciones Varias'
-		WHEN C.ConTpoCnc = 6 THEN '6: Aportes'
-		WHEN C.ConTpoCnc = 7 THEN '7: Provisión'
-		ELSE 'Unknown' -- or any other default value you prefer
-	END AS TipoConcepto,
-	F.ForCod CodFormula, F.ForDsc DescripcionFormula,
-	ForFor1 + ForFor2 + ForFor3 FormulaCompleta,
-	ForPara11 + ForCompa1 + ' ' + ForPara12 + ForUnion1 + ' ' + ForPara21 + ForCompa2 + ' ' + ForPara22 CondicionFormula
+SELECT DISTINCT 
+    C.ConCod AS CodConcepto, 
+    C.ConDsc AS DescripcionConcepto, 
+    C.ConTra AS TransitorioDefinitivo, 
+    TL.TpoLiqDsc AS TipoLiquidacion, 
+    C.ConOrd AS Orden, 
+    CASE 
+        WHEN C.ConTpoCnc = 1 THEN '1: Sujeto a Retención'
+        WHEN C.ConTpoCnc = 2 THEN '2: No Sujeto a Retención'
+        WHEN C.ConTpoCnc = 3 THEN '3: Salario Familiar'
+        WHEN C.ConTpoCnc = 4 THEN '4: Retenciones'
+        WHEN C.ConTpoCnc = 5 THEN '5: Deducciones Varias'
+        WHEN C.ConTpoCnc = 6 THEN '6: Aportes'
+        WHEN C.ConTpoCnc = 7 THEN '7: Provisión'
+        ELSE 'Unknown'
+    END AS TipoConcepto,
+    CASE 
+        WHEN C.ConTpoCnc = 1 THEN 'SR'
+        WHEN C.ConTpoCnc = 2 THEN 'NR'
+        WHEN C.ConTpoCnc = 3 THEN 'SF'
+        WHEN C.ConTpoCnc = 4 THEN 'RT'
+        WHEN C.ConTpoCnc = 5 THEN 'DV'
+        WHEN C.ConTpoCnc = 6 THEN 'AP'
+        WHEN C.ConTpoCnc = 7 THEN 'PR'
+        ELSE '??'
+    END AS TipoConceptoAbr,
+    F.ForCod AS CodFormula, 
+    F.ForDsc AS DescripcionFormula,
+    ForFor1 + ForFor2 + ForFor3 AS FormulaCompleta,
+    ForPara11 + ForCompa1 + ' ' + ForPara12 + ForUnion1 + ' ' + ForPara21 + ForCompa2 + ' ' + ForPara22 AS CondicionFormula,
+    C.ConObs AS Observacion,
+    C.ConVal1 AS Val1,
+    C.ConVal2 AS Val2,
+    C.ConVal3 AS Val3
 FROM [UPCN_RRHH_PRUE].dbo.[FORMUL] F
-	JOIN [UPCN_RRHH_PRUE].dbo.[CONCE21] C
-		ON (F.SucCod = C.SucCod and C.ForCod = F.ForCod)
-	JOIN [UPCN_RRHH_PRUE].dbo.[TIPLIQ] TL
-		ON (C.ConTpoLiq = TL.TpoLiqCod)
-WHERE F.ForVig = '01/01/1753' and C.ConVig = '01/01/1753' 
-	AND C.SucCod = 1
+    JOIN [UPCN_RRHH_PRUE].dbo.[CONCE21] C
+        ON (F.SucCod = C.SucCod AND C.ForCod = F.ForCod)
+    JOIN [UPCN_RRHH_PRUE].dbo.[TIPLIQ] TL
+        ON (C.ConTpoLiq = TL.TpoLiqCod)
+WHERE F.ForVig = '01/01/1753' AND C.ConVig = '01/01/1753' 
+    AND C.SucCod = 1
 
 
 Este es el diccionario de variables. En términos generales las que tienen nnnn son las que nos interesan (referencian concepto nnnn), y las que además tienen mmmm o xxxx suelen definir un rango, que también nos interesan. El resto sólo como referencia.

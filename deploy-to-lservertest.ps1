@@ -8,7 +8,7 @@ param(
 
 # Configuracion
 $IMAGE_NAME = "formu3"
-$IMAGE_TAG = "dev-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+$IMAGE_TAG = "latest"
 $CONTAINER_NAME = "formu3-dev"
 $HOST_PORT = "8776"
 $CONTAINER_PORT = "8080"
@@ -82,8 +82,7 @@ function Show-Help {
     Write-Host "  restart    - Reiniciar contenedor" -ForegroundColor Green
     Write-Host "  logs       - Ver logs" -ForegroundColor Green
     Write-Host "  status     - Ver estado" -ForegroundColor Green
-    Write-Host "  clean      - Limpiar recursos" -ForegroundColor Green
-    Write-Host "  freespace  - Limpiar espacio en lservertest" -ForegroundColor Green
+    Write-Host "  clean      - Detener y remover contenedor" -ForegroundColor Green
     Write-Host "  help       - Mostrar esta ayuda" -ForegroundColor Green
     Write-Host ""
     Write-Host "Variables de entorno opcionales:" -ForegroundColor Yellow
@@ -98,9 +97,9 @@ function Show-Help {
     Write-Host "  .\deploy-to-lservertest.ps1 logs         # Ver logs" -ForegroundColor Cyan
 }
 
-# Funcion para limpiar recursos (PRESERVA dev-latest para cache)
+# Funcion para limpiar recursos (solo detiene contenedor anterior)
 function Clean-Resources {
-    Write-Host "Limpiando recursos para liberar espacio..." -ForegroundColor Yellow
+    Write-Host "Preparando deployment..." -ForegroundColor Yellow
     
     # Detener contenedor si existe
     $containerExists = docker ps -a --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | Select-String $CONTAINER_NAME
@@ -110,69 +109,10 @@ function Clean-Resources {
         docker rm $CONTAINER_NAME 2>$null
         Write-Host "Contenedor removido" -ForegroundColor Green
     } else {
-        Write-Host "No hay contenedor existente para limpiar" -ForegroundColor Yellow
+        Write-Host "No hay contenedor existente" -ForegroundColor Yellow
     }
     
-    # NO borrar dev-latest aquí - se necesita para el cache del build
-    # Se borrará después del build exitoso si es necesario
-    
-    # Limpiar solo imágenes antiguas de formu3 (con tags dev-* excepto dev-latest)
-    Write-Host "Limpiando imagenes antiguas de formu3 (preservando dev-latest para cache)..." -ForegroundColor Yellow
-    $oldImages = docker images "${IMAGE_NAME}:dev-*" --format "{{.Repository}}:{{.Tag}}" | Where-Object { $_ -notlike "*dev-latest" }
-    if ($oldImages) {
-        $oldImages | ForEach-Object {
-            Write-Host "  Removiendo imagen antigua: $_" -ForegroundColor Yellow
-            docker rmi $_ 2>$null
-        }
-        Write-Host "Imagenes antiguas removidas" -ForegroundColor Green
-    } else {
-        Write-Host "No hay imagenes antiguas para limpiar" -ForegroundColor Yellow
-    }
-    
-    Write-Host "Limpieza completada (dev-latest preservado para cache)" -ForegroundColor Green
-}
-
-# Funcion para limpiar espacio en lservertest (solo recursos de formu3)
-function Clean-ServerSpace {
-    Write-Host "Limpiando espacio de recursos de formu3 en lservertest..." -ForegroundColor Yellow
-    
-    # Limpiar solo imágenes antiguas de formu3 (con tags dev-* excepto dev-latest y la actual)
-    Write-Host "Removiendo imagenes antiguas de formu3..." -ForegroundColor Yellow
-    $allFormuImages = docker images "${IMAGE_NAME}:*" --format "{{.Repository}}:{{.Tag}}"
-    if ($allFormuImages) {
-        $allFormuImages | ForEach-Object {
-            $tag = $_.Split(':')[1]
-            # Mantener dev-latest y la imagen actual (si existe)
-            if ($tag -ne "dev-latest" -and $tag -ne $IMAGE_TAG) {
-                Write-Host "  Removiendo imagen antigua: $_" -ForegroundColor Yellow
-                docker rmi $_ 2>$null
-            }
-        }
-        Write-Host "Imagenes antiguas de formu3 removidas" -ForegroundColor Green
-    } else {
-        Write-Host "No hay imagenes antiguas de formu3 para limpiar" -ForegroundColor Yellow
-    }
-    
-    # Limpiar solo contenedores detenidos de formu3
-    Write-Host "Removiendo contenedores detenidos de formu3..." -ForegroundColor Yellow
-    $stoppedContainers = docker ps -a --filter "name=${CONTAINER_NAME}" --filter "status=exited" --format "{{.ID}}"
-    if ($stoppedContainers) {
-        $stoppedContainers | ForEach-Object {
-            Write-Host "  Removiendo contenedor detenido: $_" -ForegroundColor Yellow
-            docker rm $_ 2>$null
-        }
-        Write-Host "Contenedores detenidos de formu3 removidos" -ForegroundColor Green
-    } else {
-        Write-Host "No hay contenedores detenidos de formu3 para limpiar" -ForegroundColor Yellow
-    }
-    
-    # Limpiar build cache (solo dangling, no todas las imágenes)
-    Write-Host "Limpiando build cache dangling..." -ForegroundColor Yellow
-    docker builder prune -f 2>$null
-    Write-Host "Build cache dangling limpiado" -ForegroundColor Green
-    
-    Write-Host "Limpieza de espacio de formu3 completada" -ForegroundColor Green
-    Write-Host "Solo se limpiaron recursos relacionados con formu3" -ForegroundColor Green
+    Write-Host "Listo para deployment" -ForegroundColor Green
 }
 
 # Funcion para construir imagen
@@ -190,44 +130,15 @@ function Build-Image {
         exit 1
     }
     
-    # Asegurar que las imágenes base estén en caché (solo la primera vez)
-    Write-Host "Verificando imagenes base en cache..." -ForegroundColor Yellow
-    docker pull node:20-alpine 2>$null
-    docker pull maven:3.9-eclipse-temurin-17 2>$null
-    docker pull eclipse-temurin:17-jre-jammy 2>$null
-    
-    # Construir comando con cache-from para reutilizar capas
-    $buildArgs = @()
-    
-    # Usar imagen anterior como cache si existe
-    $previousImage = docker images "${IMAGE_NAME}:dev-latest" --format "{{.Repository}}:{{.Tag}}" | Select-String "dev-latest"
-    if ($previousImage) {
-        $buildArgs += "--cache-from", "${IMAGE_NAME}:dev-latest"
-        Write-Host "Usando imagen anterior como cache: ${IMAGE_NAME}:dev-latest" -ForegroundColor Cyan
-    }
-    
-    # Tag de la imagen
-    $buildArgs += "-t", "${IMAGE_NAME}:${IMAGE_TAG}"
-    $buildArgs += "."
-    
-    Write-Host "Ejecutando: docker build $($buildArgs -join ' ')" -ForegroundColor Cyan
+    # Construir imagen (Docker usa cache automaticamente)
+    # Las imagenes base se descargan solo la primera vez
+    Write-Host "Ejecutando: docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ." -ForegroundColor Cyan
     Write-Host "NOTA: Las dependencias de Maven y npm se descargaran solo si cambian pom.xml o package.json" -ForegroundColor Yellow
     
-    & docker build $buildArgs
+    docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+    
     if ($LASTEXITCODE -eq 0) {
-        # Guardar la imagen anterior de dev-latest como backup para cache (si existe)
-        $oldLatestExists = docker images "${IMAGE_NAME}:dev-latest" --format "{{.Repository}}:{{.Tag}}" | Select-String "dev-latest"
-        if ($oldLatestExists) {
-            # Tag la nueva imagen antes de reemplazar dev-latest
-            docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:dev-latest"
-            Write-Host "Imagen construida exitosamente: ${IMAGE_NAME}:${IMAGE_TAG}" -ForegroundColor Green
-            Write-Host "Tag adicional creado: ${IMAGE_NAME}:dev-latest" -ForegroundColor Green
-            Write-Host "Cache preservado para el proximo build" -ForegroundColor Cyan
-        } else {
-            docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:dev-latest"
-            Write-Host "Imagen construida exitosamente: ${IMAGE_NAME}:${IMAGE_TAG}" -ForegroundColor Green
-            Write-Host "Tag adicional creado: ${IMAGE_NAME}:dev-latest" -ForegroundColor Green
-        }
+        Write-Host "Imagen construida exitosamente: ${IMAGE_NAME}:${IMAGE_TAG}" -ForegroundColor Green
     } else {
         Write-Host "Error al construir la imagen Docker" -ForegroundColor Red
         Write-Host "Verifica que Docker este funcionando correctamente" -ForegroundColor Yellow
@@ -245,14 +156,14 @@ function Run-Container {
     Write-Host "Ejecutando contenedor..." -ForegroundColor Yellow
     
     # Verificar que la imagen existe
-    $imageExists = docker images "${IMAGE_NAME}:dev-latest" --format "{{.Repository}}:{{.Tag}}" | Select-String "dev-latest"
+    $imageExists = docker images "${IMAGE_NAME}:${IMAGE_TAG}" --format "{{.Repository}}:{{.Tag}}" | Select-String "${IMAGE_TAG}"
     if (-not $imageExists) {
-        Write-Host "Error: La imagen ${IMAGE_NAME}:dev-latest no existe" -ForegroundColor Red
+        Write-Host "Error: La imagen ${IMAGE_NAME}:${IMAGE_TAG} no existe" -ForegroundColor Red
         Write-Host "Ejecuta primero: .\deploy-to-lservertest.ps1 build" -ForegroundColor Yellow
         exit 1
     }
     
-    Write-Host "Imagen encontrada: ${IMAGE_NAME}:dev-latest" -ForegroundColor Green
+    Write-Host "Imagen encontrada: ${IMAGE_NAME}:${IMAGE_TAG}" -ForegroundColor Green
     Write-Host "Configurando variables de entorno..." -ForegroundColor Yellow
     
     # Construir comando docker run con solo las variables de entorno definidas
@@ -286,7 +197,7 @@ function Run-Container {
     
     # Construir comando completo con mapeo de puertos
     $envVarsString = $envVars -join " "
-    $dockerRunCmd = "docker run -d --name $CONTAINER_NAME --restart unless-stopped -p ${HOST_PORT}:${CONTAINER_PORT} $envVarsString `"${IMAGE_NAME}:dev-latest`""
+    $dockerRunCmd = "docker run -d --name $CONTAINER_NAME --restart unless-stopped -p ${HOST_PORT}:${CONTAINER_PORT} $envVarsString `"${IMAGE_NAME}:${IMAGE_TAG}`""
     
     Write-Host "Ejecutando contenedor..." -ForegroundColor Cyan
     Invoke-Expression $dockerRunCmd
@@ -354,13 +265,11 @@ function Start-FullDeploy {
         exit 1
     }
 
-    # Limpiar recursos anteriores
+    # Detener contenedor anterior si existe
     Clean-Resources
-    
-    # Limpiar espacio en lservertest
-    Clean-ServerSpace
 
     # Construir imagen (multi-stage build incluye compilación frontend + backend)
+    # Docker usa cache automaticamente: imagenes base y dependencias solo se descargan si cambian
     Build-Image
 
     # Ejecutar contenedor
@@ -427,9 +336,6 @@ try {
         }
         "clean" {
             Clean-Resources
-        }
-        "freespace" {
-            Clean-ServerSpace
         }
         "help" {
             Show-Help

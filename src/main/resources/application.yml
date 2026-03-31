@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:sqlserver://192.168.0.227:1433;database=UPCN_RRHH_PRUE;encrypt=false;trustServerCertificate=true
-    username: UPCN-admin
-    password: UPCN-2018+
+    url: jdbc:sqlserver://192.168.0.227:1433;database=UPCN_REPORTES;encrypt=false;trustServerCertificate=true
+    username: consultas
+    password: Csua2018
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   
   jpa:

@@ -37,7 +37,7 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
                 MIN(Val1) AS Val1,
                 MIN(Val2) AS Val2,
                 MIN(Val3) AS Val3
-            FROM ConceptoTipoLiqFormula
+            FROM UPCN_REPORTES.dbo.ConceptoTipoLiqFormula
             GROUP BY CodConcepto, CodFormula
             ORDER BY CodConcepto
             """, nativeQuery = true)
@@ -63,7 +63,7 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
                 MIN(Val1) AS Val1,
                 MIN(Val2) AS Val2,
                 MIN(Val3) AS Val3
-            FROM ConceptoTipoLiqFormula
+            FROM UPCN_REPORTES.dbo.ConceptoTipoLiqFormula
             WHERE CodConcepto = :codigo
             GROUP BY CodConcepto, CodFormula
             """, nativeQuery = true)
@@ -90,7 +90,7 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
                 MIN(Val1) AS Val1,
                 MIN(Val2) AS Val2,
                 MIN(Val3) AS Val3
-            FROM ConceptoTipoLiqFormula
+            FROM UPCN_REPORTES.dbo.ConceptoTipoLiqFormula
             WHERE CodConcepto BETWEEN :codInicio AND :codFin
             GROUP BY CodConcepto, CodFormula
             ORDER BY CodConcepto
@@ -105,7 +105,7 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
      */
     @Query(value = """
             SELECT DISTINCT CodConcepto
-            FROM ConceptoTipoLiqFormula
+            FROM UPCN_REPORTES.dbo.ConceptoTipoLiqFormula
             WHERE FormulaCompleta LIKE :patron
             """, nativeQuery = true)
     List<String> findConceptosQueReferencian(@Param("patron") String patron);
@@ -114,6 +114,6 @@ public interface ConceptoRepository extends JpaRepository<Concepto, String> {
      * Obtiene solo los códigos de todos los conceptos.
      * Útil para construir el caché de dependencias.
      */
-    @Query(value = "SELECT DISTINCT CodConcepto FROM ConceptoTipoLiqFormula ORDER BY CodConcepto", nativeQuery = true)
+    @Query(value = "SELECT DISTINCT CodConcepto FROM UPCN_REPORTES.dbo.ConceptoTipoLiqFormula ORDER BY CodConcepto", nativeQuery = true)
     List<String> findAllCodigos();
 }

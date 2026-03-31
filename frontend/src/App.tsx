@@ -13,7 +13,11 @@ import ReactFlow, {
     useReactFlow,
     ReactFlowProvider,
     SelectionMode,
+    getNodesBounds,
+    getViewportForBounds,
 } from 'reactflow';
+import { toPng } from 'html-to-image';
+import LZString from 'lz-string';
 import 'reactflow/dist/style.css';
 
 import { customEdgeTypes } from './components/CustomEdges';
@@ -144,7 +148,7 @@ const FlowCanvas: React.FC = () => {
 
     // Cargar datos iniciales
     useEffect(() => {
-        setPantallasGuardadas(pantallaStorage.getAll());
+        pantallaStorage.getAll().then(setPantallasGuardadas);
     }, []);
 
     // Buscar conceptos
@@ -856,7 +860,7 @@ const FlowCanvas: React.FC = () => {
     }, [filtrosLiq, setNodes, setEdges, nodes]);
 
     // Guardar pantalla
-    const guardarPantalla = useCallback(() => {
+    const guardarPantalla = useCallback(async () => {
         // Convertir Map de liquidaciones a objeto para serialización
         const liquidacionesObj: Record<string, Liquidacion> = {};
         liquidaciones.forEach((liq, codigo) => {
@@ -893,14 +897,18 @@ const FlowCanvas: React.FC = () => {
             liquidaciones: liquidaciones.size > 0 ? liquidacionesObj : undefined,
         };
 
-        pantallaStorage.save(pantalla);
-        setPantallasGuardadas(pantallaStorage.getAll());
-        alert('Pantalla guardada!');
+        const saved = await pantallaStorage.save(pantalla);
+        if (saved) {
+            setPantallasGuardadas(await pantallaStorage.getAll());
+            alert('Pantalla guardada!');
+        } else {
+            alert('Error al guardar la pantalla');
+        }
     }, [nombrePantalla, conceptoRaiz, nodes, edges, filtrosLiq, liquidaciones]);
 
     // Cargar pantalla guardada
     const cargarPantalla = useCallback(async (id: string) => {
-        const pantalla = pantallaStorage.getById(id);
+        const pantalla = await pantallaStorage.getById(id);
         if (!pantalla) return;
 
         setIsLoading(true);
@@ -1044,10 +1052,14 @@ const FlowCanvas: React.FC = () => {
     }, [expandirConcepto, setNodes, setEdges, fitView, eliminarRango, setLiquidaciones]);
 
     // Eliminar pantalla guardada
-    const eliminarPantalla = useCallback((id: string) => {
+    const eliminarPantalla = useCallback(async (id: string) => {
         if (confirm('¿Eliminar esta pantalla guardada?')) {
-            pantallaStorage.delete(id);
-            setPantallasGuardadas(pantallaStorage.getAll());
+            const deleted = await pantallaStorage.delete(id);
+            if (deleted) {
+                setPantallasGuardadas(await pantallaStorage.getAll());
+            } else {
+                alert('Error al eliminar la pantalla');
+            }
         }
     }, []);
 
@@ -1147,6 +1159,294 @@ const FlowCanvas: React.FC = () => {
         eliminarComentarioRef.current = eliminarComentario;
     }, [eliminarComentario]);
 
+    // Exportar canvas a PNG de alta calidad
+    const exportarPNG = useCallback(() => {
+        if (nodes.length === 0) {
+            alert('No hay nodos para exportar');
+            return;
+        }
+
+        // Obtener el elemento del viewport de ReactFlow
+        const viewportElement = document.querySelector('.react-flow__viewport') as HTMLElement;
+        if (!viewportElement) {
+            alert('Error: No se pudo encontrar el canvas');
+            return;
+        }
+
+        setIsLoading(true);
+
+        // Calcular los bounds de todos los nodos
+        const nodesBounds = getNodesBounds(nodes);
+        
+        // Agregar padding alrededor del contenido
+        const padding = 50;
+        const width = nodesBounds.width + padding * 2;
+        const height = nodesBounds.height + padding * 2;
+        
+        // Calcular el viewport óptimo para capturar todos los nodos
+        const viewport = getViewportForBounds(
+            nodesBounds,
+            width,
+            height,
+            0.5,  // minZoom
+            2,    // maxZoom
+            padding
+        );
+
+        // Configuración para alta calidad (2x resolución)
+        const scale = 2;
+
+        toPng(viewportElement, {
+            backgroundColor: '#0f172a', // Color de fondo del canvas
+            width: width,
+            height: height,
+            style: {
+                width: `${width}px`,
+                height: `${height}px`,
+                transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+            },
+            pixelRatio: scale,
+            filter: (node) => {
+                // Excluir controles y minimap de la exportación
+                const classList = node.classList?.toString() || '';
+                return !classList.includes('react-flow__minimap') && 
+                       !classList.includes('react-flow__controls') &&
+                       !classList.includes('react-flow__attribution');
+            },
+        })
+            .then((dataUrl) => {
+                // Crear enlace de descarga
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+                const filename = nombrePantalla 
+                    ? `${nombrePantalla.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.png`
+                    : `diagrama_${timestamp}.png`;
+                link.download = filename;
+                link.href = dataUrl;
+                link.click();
+            })
+            .catch((error) => {
+                console.error('Error exportando PNG:', error);
+                alert('Error al exportar la imagen');
+            })
+            .finally(() => {
+                setIsLoading(false);
+            });
+    }, [nodes, nombrePantalla]);
+
+    // Generar link compartible con el estado actual
+    const copiarLink = useCallback(() => {
+        if (nodes.length === 0) {
+            alert('No hay nodos para compartir');
+            return;
+        }
+
+        // Serializar el estado actual
+        const estadoCompartible = {
+            nombre: nombrePantalla,
+            conceptoRaiz,
+            nodos: nodes.map(n => ({
+                id: n.id,
+                type: n.type,
+                position: n.position,
+                data: {
+                    codigo: n.data?.concepto?.codigo,
+                    rango: n.data?.rango,
+                    comentarioTexto: n.type === 'comment' ? n.data?.texto : undefined,
+                },
+            })),
+            aristas: edges.map(e => ({
+                id: e.id,
+                source: e.source,
+                target: e.target,
+                type: e.type,
+                style: e.style,
+                data: e.data,
+            })),
+            filtrosLiq: filtrosLiq,
+        };
+
+        // Comprimir y codificar para URL
+        const jsonString = JSON.stringify(estadoCompartible);
+        const compressed = LZString.compressToEncodedURIComponent(jsonString);
+
+        // Construir URL
+        const url = `${window.location.origin}${window.location.pathname}?state=${compressed}`;
+
+        // Copiar al portapapeles con fallback para HTTP
+        const copiarAlPortapapeles = async (texto: string): Promise<boolean> => {
+            // Método 1: Clipboard API (requiere HTTPS)
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(texto);
+                    return true;
+                } catch {
+                    // Continuar con fallback
+                }
+            }
+            
+            // Método 2: execCommand fallback (funciona en HTTP)
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = texto;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '-9999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                return success;
+            } catch {
+                return false;
+            }
+        };
+
+        copiarAlPortapapeles(url).then((success) => {
+            if (success) {
+                alert('Link copiado al portapapeles!');
+            } else {
+                prompt('No se pudo copiar automáticamente. Copia este link:', url);
+            }
+        });
+    }, [nodes, edges, nombrePantalla, conceptoRaiz, filtrosLiq]);
+
+    // Cargar estado desde URL al iniciar
+    useEffect(() => {
+        const cargarEstadoDesdeURL = async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const stateParam = urlParams.get('state');
+
+            if (!stateParam) return;
+
+            try {
+                // Descomprimir y parsear
+                const jsonString = LZString.decompressFromEncodedURIComponent(stateParam);
+                if (!jsonString) {
+                    console.error('Error descomprimiendo estado de URL');
+                    return;
+                }
+
+                const estado = JSON.parse(jsonString);
+                setIsLoading(true);
+
+                // Cargar conceptos desde el backend
+                const codigosConceptos = estado.nodos
+                    .filter((n: { type: string }) => n.type === 'concept')
+                    .map((n: { data: { codigo: string } }) => n.data.codigo)
+                    .filter((c: string | undefined): c is string => !!c);
+
+                const conceptos = await conceptoApi.getBatch(codigosConceptos);
+                const conceptosMap = new Map<string, Concepto>();
+                conceptos.forEach(c => conceptosMap.set(c.codigo, c));
+                setConceptosCargados(conceptosMap);
+
+                // Recrear nodos de concepto
+                const conceptNodes: Node[] = estado.nodos
+                    .filter((n: { type: string }) => n.type === 'concept')
+                    .map((n: { id: string; type: string; position: { x: number; y: number }; data: { codigo: string } }) => ({
+                        id: n.id,
+                        type: n.type,
+                        position: n.position,
+                        data: {
+                            concepto: n.data.codigo ? conceptosMap.get(n.data.codigo) : undefined,
+                            onExpand: (codigo: string, direccion: 'dependencias' | 'dependientes') => {
+                                expandirConceptoRef.current?.(codigo, direccion);
+                            },
+                            onVariableClick: (variable: Variable, depSource: DependencySource) => {
+                                onVariableClickRef.current?.(variable, n.id, depSource);
+                            },
+                            onDelete: (codigo: string) => {
+                                onDeleteConceptoRef.current?.(codigo);
+                            },
+                        },
+                    }));
+
+                // Recrear nodos de rango
+                const rangeNodes: Node[] = estado.nodos
+                    .filter((n: { type: string; data: { rango: unknown } }) => n.type === 'range' && n.data.rango)
+                    .map((n: { id: string; type: string; position: { x: number; y: number }; data: { rango: unknown } }) => ({
+                        id: n.id,
+                        type: n.type,
+                        position: n.position,
+                        data: {
+                            rango: n.data.rango,
+                            onExpandConcepto: (codigo: string) => {
+                                onExpandConceptoFromRangeRef.current?.(codigo, n.id);
+                            },
+                            onDelete: (rangoId: string) => {
+                                eliminarRangoRef.current?.(rangoId);
+                            },
+                            liquidaciones: new Map(),
+                            liquidacionCargada: false,
+                        },
+                    }));
+
+                // Recrear nodos de comentario
+                const commentNodes: Node[] = estado.nodos
+                    .filter((n: { type: string }) => n.type === 'comment')
+                    .map((n: { id: string; type: string; position: { x: number; y: number }; data: { comentarioTexto: string } }) => ({
+                        id: n.id,
+                        type: n.type,
+                        position: n.position,
+                        data: {
+                            texto: n.data.comentarioTexto || '',
+                            onTextoChange: (nodeId: string, nuevoTexto: string) => {
+                                actualizarComentarioRef.current?.(nodeId, nuevoTexto);
+                            },
+                            onDelete: (nodeId: string) => {
+                                eliminarComentarioRef.current?.(nodeId);
+                            },
+                            onCreated: (nodeId: string) => {
+                                marcarComentarioCreadoRef.current?.(nodeId);
+                            },
+                        },
+                    }));
+
+                const newNodes: Node[] = [...conceptNodes, ...rangeNodes, ...commentNodes];
+
+                // Recrear edges
+                const newEdges: Edge[] = estado.aristas.map((e: {
+                    id: string;
+                    source: string;
+                    target: string;
+                    type?: string;
+                    style?: React.CSSProperties;
+                    data?: unknown;
+                }) => ({
+                    id: e.id,
+                    source: e.source,
+                    target: e.target,
+                    type: e.type || 'smoothstep',
+                    animated: true,
+                    style: e.style,
+                    data: e.data,
+                }));
+
+                setNodes(newNodes);
+                setEdges(newEdges);
+                setConceptoRaiz(estado.conceptoRaiz || '');
+                setNombrePantalla(estado.nombre || '');
+
+                if (estado.filtrosLiq) {
+                    setFiltrosLiq(estado.filtrosLiq);
+                }
+
+                // Limpiar URL para evitar recargas
+                window.history.replaceState({}, '', window.location.pathname);
+
+                setTimeout(() => fitView({ duration: 500 }), 200);
+            } catch (error) {
+                console.error('Error cargando estado desde URL:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        cargarEstadoDesdeURL();
+    }, []); // Solo ejecutar al montar
+
     return (
         <div className="app-container">
             {/* Header */}
@@ -1169,6 +1469,12 @@ const FlowCanvas: React.FC = () => {
                     </button>
                     <button className="btn btn-comment" onClick={agregarComentario}>
                         📝 Comentario
+                    </button>
+                    <button className="btn btn-export" onClick={exportarPNG} disabled={nodes.length === 0}>
+                        📷 Exportar PNG
+                    </button>
+                    <button className="btn btn-share" onClick={copiarLink} disabled={nodes.length === 0}>
+                        🔗 Copiar Link
                     </button>
                 </div>
             </header>
