@@ -424,6 +424,26 @@ body {
   color: var(--node-text-color, #1e293b);
 }
 
+.concept-node-badge--sr {
+  background: #15803d;
+  color: #f8fafc;
+}
+
+.concept-node-badge--nr {
+  background: #1d4ed8;
+  color: #f8fafc;
+}
+
+.concept-node-badge--rt {
+  background: #dc2626;
+  color: #f8fafc;
+}
+
+.concept-node-badge--ap {
+  background: #7c3aed;
+  color: #f8fafc;
+}
+
 .concept-node-header-actions {
   display: flex;
   align-items: center;

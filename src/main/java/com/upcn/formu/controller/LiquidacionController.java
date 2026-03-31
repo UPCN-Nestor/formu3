@@ -16,7 +16,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/liquidacion")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cors.allowed-origins:http://localhost:5173}")
 public class LiquidacionController {
 
     private final LiquidacionService liquidacionService;

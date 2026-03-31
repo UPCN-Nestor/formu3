@@ -10,6 +10,16 @@ interface ConceptNodeData {
     onDelete?: (codigo: string) => void;
 }
 
+const TIPO_CONCEPTO_POR_ABR: Record<string, string> = {
+    SR: 'Sujeto a Retencion',
+    NR: 'No Sujeto a Retencion',
+    SF: 'Salario Familiar',
+    RT: 'Retenciones',
+    DV: 'Deducciones Varias',
+    AP: 'Aportes',
+    PR: 'Provision',
+};
+
 /**
  * Componente de nodo para visualizar un concepto.
  * Muestra código, descripción, fórmula con variables coloreadas e importe.
@@ -18,6 +28,11 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
     const { concepto, onExpand, onVariableClick, onDelete } = data;
 
     const borderColor = concepto.borderColor;
+    const tipoConceptoAbr = (concepto.tipoConceptoAbr || '').trim().toUpperCase();
+    const tipoConceptoBadgeKey = tipoConceptoAbr === 'RET' ? 'RT' : tipoConceptoAbr;
+    const tipoConceptoTooltip = (concepto.tipoConcepto || '').trim()
+        || (concepto.tipoConceptoAbr ? TIPO_CONCEPTO_POR_ABR[concepto.tipoConceptoAbr] : '')
+        || 'Tipo de concepto';
 
     const nodeClass = concepto.definitivo ? 'concept-node definitivo' : 'concept-node transitorio';
 
@@ -43,7 +58,10 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
                 </span>
                 <div className="concept-node-header-actions nodrag">
                     {concepto.tipoConceptoAbr && (
-                        <span className="concept-node-badge">
+                        <span
+                            className={`concept-node-badge concept-node-badge--${tipoConceptoBadgeKey.toLowerCase()}`}
+                            title={tipoConceptoTooltip}
+                        >
                             {concepto.tipoConceptoAbr}
                         </span>
                     )}

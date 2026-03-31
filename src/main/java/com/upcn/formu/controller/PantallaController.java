@@ -16,7 +16,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/pantallas")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cors.allowed-origins:http://localhost:5173}")
 public class PantallaController {
 
     private final PantallaService pantallaService;

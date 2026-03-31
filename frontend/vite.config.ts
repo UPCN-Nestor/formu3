@@ -13,6 +13,7 @@ export default defineConfig({
         port: 5173,
         host: '0.0.0.0', // Escucha en todas las interfaces
         strictPort: true,
+        cors: true,
         watch: {
             usePolling: true,
         },

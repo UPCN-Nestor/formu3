@@ -18,7 +18,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/conceptos")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cors.allowed-origins:http://localhost:5173}")
 public class ConceptoController {
 
     private final ConceptoService conceptoService;
